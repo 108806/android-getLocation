@@ -78,8 +78,8 @@ public class MainActivity extends AppCompatActivity {
                             String humanReadableTime = getHumanReadableTime(currentTimeMillis);
                             long timeDiffMillis = currentTimeMillis - startTime;
                             String timeStamp = String.valueOf((timeDiffMillis / 3600000)) + "h "
-                                    +  (timeDiffMillis / 600000) + "m "
-                                    +  (timeDiffMillis / 10000 ) + "s @ " + humanReadableTime;
+                                    +  (timeDiffMillis / 60000) + "m "
+                                    +  (timeDiffMillis / 1000 ) + "s @ " + humanReadableTime;
                             textView.setText(timeStamp);
                             String locData = "\nLat: " + latitude + "\nLon: " + longitude + "," + location.getTime();
                             textView.append(locData);
