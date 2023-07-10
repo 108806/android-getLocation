@@ -6,6 +6,7 @@ import android.location.Location;
 import android.os.Bundle;
 import android.util.Log;
 import android.util.Pair;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
@@ -19,6 +20,10 @@ import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
 
+import org.w3c.dom.Text;
+
+import java.util.Locale;
+
 public class MainActivity extends AppCompatActivity {
 
     private static final int PERMISSION_REQUEST_CODE = 1;
@@ -28,11 +33,15 @@ public class MainActivity extends AppCompatActivity {
 
     private Location oldLocation;
 
+    private double globalDist;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-
+        TextView terminalTextView = findViewById(R.id.terminalTextView);
+        terminalTextView.setText("Waiting for the data...\n");
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
         createLocationRequest();
         createLocationCallback();
@@ -41,29 +50,41 @@ public class MainActivity extends AppCompatActivity {
     private void createLocationRequest() {
         locationRequest = new LocationRequest();
         locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
-        locationRequest.setInterval(3000); // Update location every 5 seconds
+        locationRequest.setInterval(5000); // Update location every 5 seconds
     }
 
     private void createLocationCallback() {
         locationCallback = new LocationCallback() {
             @Override
-            public void onLocationResult(LocationResult locationResult) {
-                if (locationResult == null) {
-                    return;
-                }
+            public void onLocationResult(@NonNull LocationResult locationResult) {
                 for (Location location : locationResult.getLocations()) {
                     // Handle the obtained location
                     String prov = location.getProvider();
                     double latitude = location.getLatitude();
                     double longitude = location.getLongitude();
-                    Toast.makeText(com.example.get_location.MainActivity.this, "Latitude: " + latitude + ", Longitude: " + longitude, Toast.LENGTH_SHORT).show();
-                    Log.d("createLocationCallback", "Lat:" + latitude + ", Lon" + longitude + ", " + prov);
-                    if (oldLocation != null) {
-                        long oldTime = oldLocation.getTime(), newTime = location.getTime();
-                        long timeDiff = newTime - oldTime;
-                        double speedKmph = SpeedCalculator.calculateSpeed(oldLocation,  location, timeDiff);
-                        Toast.makeText(com.example.get_location.MainActivity.this, "timeDiff:" + timeDiff + ", speedKmph:" + speedKmph, Toast.LENGTH_SHORT).show();
-                    }
+
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            TextView textView = findViewById(R.id.terminalTextView);
+                            String locData = "\nLat: " + latitude + ", Long: " + longitude + "," + location.getTime();
+                            textView.setText(locData);
+                            if (oldLocation != null) {
+                                long oldTime = oldLocation.getTime(), newTime = location.getTime();
+                                long timeDiff = newTime - oldTime;
+                                double speedKmph = SpeedCalculator.calculateSpeed(oldLocation, location, timeDiff);
+                                double dist = SpeedCalculator.calculateDistance(oldLocation.getLatitude(), oldLocation.getLongitude(), latitude, longitude);
+                                globalDist += dist;
+                                String moveData = String.format(Locale.GERMANY, "\nSPEED: %.3f kmph", speedKmph)
+                                        + String.format(Locale.GERMANY, "\nTIME: %03d", timeDiff)
+                                        + String.format(Locale.GERMANY, "\nDIST: %.3f m", dist)
+                                        + String.format(Locale.GERMANY, "\nGLOBAL DIST: %.3f m\n", globalDist);
+                                textView.append(moveData);
+                                textView.scrollBy(0, 256);
+                            }
+                        }
+                    });
+                    Log.d("createLocationCallback", "Lat:" + latitude + ", Lon:" + longitude + ", " + prov);
                     oldLocation = location;
                 }
             }
@@ -100,7 +121,7 @@ public class MainActivity extends AppCompatActivity {
 
             // Calculate distance in meters
             double distanceMeters = EARTH_RADIUS_M * c;
-            Log.d("calculateDistance", " : " + distanceMeters);
+            Log.d("calculateDistance", ": " + distanceMeters);
             return distanceMeters;
         }
     }
@@ -141,7 +162,7 @@ public class MainActivity extends AppCompatActivity {
                 startLocationUpdates();
             } else {
                 Toast.makeText(this, "Location permission denied", Toast.LENGTH_SHORT).show();
-                Log.e("onRequest","Permissions denied." );
+                Log.e("onRequest", "Permissions denied.");
             }
         }
     }
