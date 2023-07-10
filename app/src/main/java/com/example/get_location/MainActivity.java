@@ -19,7 +19,10 @@ import com.google.android.gms.location.LocationCallback;
 import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
-
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
+import java.util.TimeZone;
 import org.w3c.dom.Text;
 
 import java.util.Locale;
@@ -34,6 +37,7 @@ public class MainActivity extends AppCompatActivity {
     private Location oldLocation;
 
     private double globalDist;
+    private long startTime = 0;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -50,7 +54,8 @@ public class MainActivity extends AppCompatActivity {
     private void createLocationRequest() {
         locationRequest = new LocationRequest();
         locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
-        locationRequest.setInterval(5000); // Update location every 5 seconds
+        locationRequest.setSmallestDisplacement(0.00001f);
+        locationRequest.setInterval(2500);
     }
 
     private void createLocationCallback() {
@@ -67,8 +72,18 @@ public class MainActivity extends AppCompatActivity {
                         @Override
                         public void run() {
                             TextView textView = findViewById(R.id.terminalTextView);
-                            String locData = "\nLat: " + latitude + ", Long: " + longitude + "," + location.getTime();
-                            textView.setText(locData);
+                            long currentTimeMillis = System.currentTimeMillis();
+                            if (startTime == 0) startTime = currentTimeMillis;
+                            //long epochTime = getEpochTime(currentTimeMillis);
+                            String humanReadableTime = getHumanReadableTime(currentTimeMillis);
+                            long timeDiffMillis = currentTimeMillis - startTime;
+                            String timeStamp = String.valueOf((timeDiffMillis / 360000)) + "h "
+                                    +  (timeDiffMillis / 60000) + "m "
+                                    +  (timeDiffMillis / 1000 ) + "s @ " + humanReadableTime;
+                            textView.setText(timeStamp);
+                            String locData = "\nLat: " + latitude + "\nLon: " + longitude + "," + location.getTime();
+                            textView.append(locData);
+
                             if (oldLocation != null) {
                                 long oldTime = oldLocation.getTime(), newTime = location.getTime();
                                 long timeDiff = newTime - oldTime;
@@ -183,5 +198,24 @@ public class MainActivity extends AppCompatActivity {
 
     private void stopLocationUpdates() {
         fusedLocationClient.removeLocationUpdates(locationCallback);
+    }
+
+    private static String getHumanReadableTime(long millis) {
+        // Create a SimpleDateFormat object with the desired format
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault());
+
+        // Set the time zone to UTC or your desired time zone
+        sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
+
+        // Convert the millisecond value to Date object
+        Date date = new Date(millis);
+
+        // Format the Date object to a human-readable string
+        return sdf.format(date);
+    }
+
+    private static long getEpochTime(long millis) {
+        // Divide the millisecond value by 1000 to get seconds
+        return millis / 1000;
     }
 }
