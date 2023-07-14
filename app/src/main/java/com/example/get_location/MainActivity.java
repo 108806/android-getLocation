@@ -10,7 +10,6 @@ import android.net.wifi.WifiManager;
 import android.os.Bundle;
 import android.os.Environment;
 import android.util.Log;
-import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -25,7 +24,11 @@ import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
 import com.google.gson.Gson;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonParser;
 import com.google.gson.reflect.TypeToken;
+
+import org.json.JSONObject;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -44,7 +47,6 @@ import java.util.TimeZone;
 public class MainActivity extends AppCompatActivity {
 
     private static final int PERMISSION_REQUEST_CODE = 1;
-    private static final int FILE_PICKER_REQUEST_CODE = 1;
     private FusedLocationProviderClient fusedLocationClient;
     private LocationRequest locationRequest;
     private LocationCallback locationCallback;
@@ -66,14 +68,6 @@ public class MainActivity extends AppCompatActivity {
             Manifest.permission.WAKE_LOCK,
     };
 
-    private void openFilePicker() {
-        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-        intent.addCategory(Intent.CATEGORY_OPENABLE);
-        intent.setType("*/*");
-
-        startActivityForResult(intent, FILE_PICKER_REQUEST_CODE);
-    }
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
 
@@ -90,6 +84,7 @@ public class MainActivity extends AppCompatActivity {
             requestLocationPermission();
         }
     }
+
     private void createLocationRequest() {
         locationRequest = new LocationRequest();
         locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
@@ -145,122 +140,122 @@ public class MainActivity extends AppCompatActivity {
     private void createLocationCallback() {
         locationCallback = new LocationCallback() {
 
-        @Override
-        public void onLocationResult(@NonNull LocationResult locationResult) {
-            for (Location location : locationResult.getLocations()) {
-                // Handle the obtained location
-                String prov = location.getProvider();
-                double latitude = location.getLatitude();
-                double longitude = location.getLongitude();
+            @Override
+            public void onLocationResult(@NonNull LocationResult locationResult) {
+                for (Location location : locationResult.getLocations()) {
+                    // Handle the obtained location
+                    String prov = location.getProvider();
+                    double latitude = location.getLatitude();
+                    double longitude = location.getLongitude();
 
-                String CWD = context.getExternalFilesDir();
-                CWD = emulateMyC0KK(CWD);
-                File wlanDataFile = new File(CWD + "/" + "wlan_data.json");
-                if (!wlanDataFile.exists()) {
-                    try {
-                        //boolean result = wlanDataFile.createNewFile(); not working
-                        FileOutputStream fos = new FileOutputStream(wlanDataFile); /// not working too
-                        fos.close();
-                        Log.d("Create new file:", "File created:" + wlanDataFile.getAbsolutePath());
-                    } catch (IOException e) {
-                        Log.e("Create new file:", "Cannot create the file: " + wlanDataFile.getAbsolutePath());
-                        throw new RuntimeException(e); // Cannot create the file: /storage/sdcard0/wlan_data.json
-                    }
-                }
-
-
-                HashMap <String, HashMap<String, Object>> dataMap = new HashMap<>();
-
-                runOnUiThread(new Runnable() {
-                    @Override
-                    public void run() {
-                        Gson gson = new Gson();
-
-                        TextView textView = findViewById(R.id.terminalTextView);
-                        long currentTimeMillis = System.currentTimeMillis();
-                        if (startTime == 0) startTime = currentTimeMillis;
-
-                        String humanReadableTime = getHumanReadableTime(currentTimeMillis);
-                        long timeDiffMillis = currentTimeMillis - startTime;
-                        String timeStamp = String.valueOf((timeDiffMillis / 3600000)) + "h "
-                                +  (timeDiffMillis / 60000) + "m "
-                                +  (timeDiffMillis / 1000 ) + "s @ " + humanReadableTime;
-                        textView.setText(timeStamp);
-                        String locData = "\nLat: " + latitude + "\nLon: " + longitude + "," + location.getTime();
-                        textView.append(locData);
-
-                        if (oldLocation != null) {
-                            long oldTime = oldLocation.getTime(), newTime = location.getTime();
-                            long timeDiff = newTime - oldTime;
-                            double speedKmph = SpeedCalculator.calculateSpeed(oldLocation, location, timeDiff);
-                            double dist = SpeedCalculator.calculateMoveDistance(oldLocation.getLatitude(), oldLocation.getLongitude(), latitude, longitude);
-                            globalDist += dist;
-                            String moveData = String.format(Locale.GERMANY, "\nSPEED: %.3f kmph", speedKmph)
-                                    + String.format(Locale.GERMANY, "\nTIME: %03d", timeDiff)
-                                    + String.format(Locale.GERMANY, "\nDIST: %.3f m", dist)
-                                    + String.format(Locale.GERMANY, "\nGLOBAL DIST: %.3f m\n", globalDist);
-                            textView.append(moveData);
-                            textView.scrollBy(0, 256);
-                        }
-
+                    String CWD = Environment.getExternalStorageDirectory().getPath();
+                    CWD = emulateMyC0KK(CWD);
+                    File wlanDataFile = new File(CWD + "/" + "wlan_data.json");
+                    if (!wlanDataFile.exists()) {
                         try {
-                            String jsonContentWLAN = new String(Files.readAllBytes(wlanDataFile.toPath()));
-                            if (!jsonContentWLAN.isEmpty()) {
-                                Type hashMapType = new TypeToken<HashMap<String, HashMap<String, Object>>>() {}.getType();
-                                HashMap<String, HashMap<String, Object>> dataMap = gson.fromJson(jsonContentWLAN, hashMapType);
-                                Log.d("Wlan Data:", wlanDataFile.toString());
-                            } else {
-                                Log.e("JsonReader:", "Empty JSON content in " + wlanDataFile);
-                            }
+                            //boolean result = wlanDataFile.createNewFile(); not working
+                            FileOutputStream fos = new FileOutputStream(wlanDataFile); /// not working too
+                            fos.close();
+                            Log.d("Create new file:", "File created:" + wlanDataFile.getAbsolutePath());
                         } catch (IOException e) {
-                            e.printStackTrace();
-                            Log.e("JsonReader:", "Error reading the " + wlanDataFile);
-                        }
-
-
-                        for (ScanResult sr : scanResults) {
-                            try {
-                                String uniqueName = getUniqueName(sr.SSID, sr.BSSID);
-                                if (isBetter(dataMap, uniqueName, sr.level)) {
-                                    // Save the JSON object to a file
-
-                                    HashMap<String, Object> jsonWLAN = new HashMap<String, Object>();
-                                    try {
-                                        jsonWLAN.put("SSID", sr.SSID);
-                                        jsonWLAN.put("BSSID", sr.BSSID);
-                                        jsonWLAN.put("frequency", sr.frequency);
-                                        jsonWLAN.put("channelWidth", sr.channelWidth);
-                                        jsonWLAN.put("level", sr.level);
-                                        jsonWLAN.put("loc", new double[]{latitude, longitude});
-                                        jsonWLAN.put("dist", calculateWLANDistance(sr.level, sr.frequency));
-                                        jsonWLAN.put("sec", sr.capabilities);
-                                        jsonWLAN.put("time", System.currentTimeMillis() / 1000);
-
-                                        dataMap.put("\"" + uniqueName + "\"", jsonWLAN);
-                                    } catch (Exception e) {
-                                        Log.e("jsonWLAN HashMap:", "Adding data to jsonWLAN failed.");
-                                        e.printStackTrace();
-                                    }
-                                    try (FileWriter writer = new FileWriter(wlanDataFile, true)) {
-                                        String innerMap = gson.toJson(jsonWLAN);
-                                        writer.append(innerMap).append(",\n");
-                                        final String TAG = "JSON file writer";
-                                        Log.d(TAG, "WLAN data saved to file: " + wlanDataFile.getAbsolutePath());
-                                    } catch (IOException e) {
-                                        final String TAG = "JSON file writer";
-                                        Log.e(TAG, "Cannot write to JSON.");
-                                        e.printStackTrace();
-                                    }
-                                } else {
-                                    Log.d("isBetter:", "We got better than:" + sr.toString());
-                                }
-                            } catch(Exception e){
-                                Log.e("WRITER:", "ERROR.");
-                                throw new RuntimeException(e);
-                            }
+                            Log.e("Create new file:", "Cannot create the file: " + wlanDataFile.getAbsolutePath());
+                            throw new RuntimeException(e); // Cannot create the file: /storage/sdcard0/wlan_data.json
                         }
                     }
-                });
+
+                    HashMap<String, HashMap<String, Object>> dataMap = new HashMap<>();
+
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            Gson gson = new Gson();
+
+                            TextView textView = findViewById(R.id.terminalTextView);
+                            long currentTimeMillis = System.currentTimeMillis();
+                            if (startTime == 0) startTime = currentTimeMillis;
+
+                            String humanReadableTime = getHumanReadableTime(currentTimeMillis);
+                            long timeDiffMillis = currentTimeMillis - startTime;
+                            String timeStamp = String.valueOf((timeDiffMillis / 3600000)) + "h "
+                                    + (timeDiffMillis / 60000) + "m "
+                                    + (timeDiffMillis / 1000) + "s @ " + humanReadableTime;
+                            textView.setText(timeStamp);
+                            String locData = "\nLat: " + latitude + "\nLon: " + longitude + "," + location.getTime();
+                            textView.append(locData);
+
+                            if (oldLocation != null) {
+                                long oldTime = oldLocation.getTime(), newTime = location.getTime();
+                                long timeDiff = newTime - oldTime;
+                                double speedKmph = SpeedCalculator.calculateSpeed(oldLocation, location, timeDiff);
+                                double dist = SpeedCalculator.calculateMoveDistance(oldLocation.getLatitude(), oldLocation.getLongitude(), latitude, longitude);
+                                globalDist += dist;
+                                String moveData = String.format(Locale.GERMANY, "\nSPEED: %.3f kmph", speedKmph)
+                                        + String.format(Locale.GERMANY, "\nTIME: %03d", timeDiff)
+                                        + String.format(Locale.GERMANY, "\nDIST: %.3f m", dist)
+                                        + String.format(Locale.GERMANY, "\nGLOBAL DIST: %.3f m\n", globalDist);
+                                textView.append(moveData);
+                                textView.scrollBy(0, 256);
+                            }
+
+                            try {
+                                String jsonContentWLAN = new String(Files.readAllBytes(wlanDataFile.toPath()));
+                                if (!jsonContentWLAN.isEmpty()) {
+                                    Type hashMapType = new TypeToken<HashMap<String, HashMap<String, Object>>>() {
+                                    }.getType();
+                                    HashMap<String, HashMap<String, Object>> dataMap = gson.fromJson(jsonContentWLAN, hashMapType);
+                                    Log.d("Wlan Data:", wlanDataFile.toString());
+                                } else {
+                                    Log.e("JsonReader:", "Empty JSON content in " + wlanDataFile);
+                                }
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                                Log.e("JsonReader:", "Error reading the " + wlanDataFile);
+                            }
+
+                            for (ScanResult sr : scanResults) {
+                                try {
+                                    String uniqueName = getUniqueName(sr.SSID, sr.BSSID);
+                                    if (isBetter(dataMap, uniqueName, sr.level)) {
+                                        // Save the JSON object to a file
+
+                                        HashMap<String, Object> jsonWLAN = new HashMap<String, Object>();
+                                        try {
+                                            jsonWLAN.put("SSID", sr.SSID);
+                                            jsonWLAN.put("BSSID", sr.BSSID);
+                                            jsonWLAN.put("frequency", sr.frequency);
+                                            jsonWLAN.put("channelWidth", sr.channelWidth);
+                                            jsonWLAN.put("level", sr.level);
+                                            jsonWLAN.put("loc", new double[]{latitude, longitude});
+                                            jsonWLAN.put("dist", calculateWLANDistance(sr.level, sr.frequency));
+                                            jsonWLAN.put("sec", sr.capabilities);
+                                            jsonWLAN.put("time", System.currentTimeMillis() / 1000);
+
+                                            dataMap.put("\"" + uniqueName + "\"", jsonWLAN);
+                                        } catch (Exception e) {
+                                            Log.e("jsonWLAN HashMap:", "Adding data to jsonWLAN failed.");
+                                            e.printStackTrace();
+                                        }
+                                        try (FileWriter writer = new FileWriter(wlanDataFile, true)) {
+                                            String innerMap = gson.toJson(jsonWLAN);
+
+                                            writer.append(innerMap).append(",\n");
+                                            final String TAG = "JSON file writer";
+                                            Log.d(TAG, "WLAN data saved to file: " + wlanDataFile.getAbsolutePath());
+                                        } catch (IOException e) {
+                                            final String TAG = "JSON file writer";
+                                            Log.e(TAG, "Cannot write to JSON.");
+                                            e.printStackTrace();
+                                        }
+                                    } else {
+                                        Log.d("isBetter:", "We got better than:" + sr.toString());
+                                    }
+                                } catch (Exception e) {
+                                    Log.e("WRITER:", "ERROR.");
+                                    throw new RuntimeException(e);
+                                }
+                            }
+                        }
+                    });
                     Log.d("createLocationCallback", "Lat:" + latitude + ", Lon:" + longitude + ", " + prov);
                     oldLocation = location;
                 }
@@ -268,7 +263,7 @@ public class MainActivity extends AppCompatActivity {
         };
     }
 
-    public class SpeedCalculator {
+    public static class SpeedCalculator {
         private static final double EARTH_RADIUS_KM = 6371;
         private static final double EARTH_RADIUS_M = 6371000;
 
@@ -394,7 +389,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
 
-    private boolean isBetter(HashMap<String, HashMap<String, Object>> dataMap, String uniqueName, int level) throws IOException {
+    private boolean isBetter(HashMap<String, HashMap<String, Object>> dataMap, String uniqueName, int level) {
         if ((dataMap.isEmpty()) || (!(uniqueName.length() > 0)) || (!dataMap.containsKey(uniqueName)))
             return true;
         HashMap<String, Object> innerMap = dataMap.get(uniqueName);
@@ -404,12 +399,11 @@ public class MainActivity extends AppCompatActivity {
             if (levelObj instanceof Integer) {
                 oldLevel = (int) levelObj;
             } else if (levelObj instanceof String) {
-            oldLevel = Integer.parseInt((String) levelObj);
-        }
-        }catch (NumberFormatException e){
+                oldLevel = Integer.parseInt((String) levelObj);
+            }
+        } catch (NumberFormatException e) {
             Log.e("isBetter:", "Parsing oldLevel exception occurred:" + e);
         }
-        String bssid = (String) innerMap.get("BSSID");
         Log.d("isBetter:", "Accepting better:" + uniqueName + " : " + level);
         return level > oldLevel;
     }
@@ -446,40 +440,38 @@ public class MainActivity extends AppCompatActivity {
         return fileName;
     }
 
-    public String emulateMyC0KK(String CWD){
-        if (CWD.toString().toLowerCase().contains("emulated")){
+    public String emulateMyC0KK(String CWD) {
+        if (CWD.toLowerCase().contains("emulated")) {
             Log.d("Emulated in CWD", "Trying manual fix...");
-            try{
+            try {
                 String writeDir = "/sdcard";
-                Boolean writeFile = new File(writeDir).isDirectory();
-                CWD = writeDir;
-            }catch ( IOError e){
+                if (new File(writeDir).isDirectory())
+                    CWD = writeDir;
+            } catch (IOError e) {
                 Log.d("Manual fix:", "No such file : " + e);
             }
-            try{
+            try {
                 String writeDir = "/sdcard0";
-                Boolean writeFile = new File(writeDir).isDirectory();
-                CWD = writeDir;
-            }catch ( IOError e){
+                if (new File(writeDir).isDirectory())
+                    CWD = writeDir;
+            } catch (IOError e) {
                 Log.d("Manual fix:", "No such file : " + e);
             }
-            try{
+            try {
                 String writeDir = "/storage/sdcard";
-                Boolean writeFile = new File(writeDir).isDirectory();
-                CWD = writeDir;
-            }catch ( IOError e){
+                if (new File(writeDir).isDirectory())
+                    CWD = writeDir;
+            } catch (IOError e) {
                 Log.d("Manual fix:", "No such file : " + e);
             }
-            try{
+            try {
                 String writeDir = "/storage/sdcard0";
-                Boolean writeFile = new File(writeDir).isDirectory();
-                CWD = writeDir;
-            }catch ( IOError e){
+                if (new File(writeDir).isDirectory())
+                    CWD = writeDir;
+            } catch (IOError e) {
                 Log.d("Manual fix:", "No such file : " + e);
             }
         }
         return CWD;
     }
-
-
 }
