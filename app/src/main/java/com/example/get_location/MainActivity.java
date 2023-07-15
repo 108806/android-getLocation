@@ -2,7 +2,6 @@ package com.example.get_location;
 
 import android.Manifest;
 import android.content.Context;
-import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.location.Location;
 import android.net.wifi.ScanResult;
@@ -24,11 +23,7 @@ import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
 import com.google.gson.Gson;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonParser;
 import com.google.gson.reflect.TypeToken;
-
-import org.json.JSONObject;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -42,7 +37,9 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.TimeZone;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -68,6 +65,8 @@ public class MainActivity extends AppCompatActivity {
             Manifest.permission.WAKE_LOCK,
     };
 
+    Map<String, HashMap<String, Object>> dataMap = new ConcurrentHashMap<>();
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
 
@@ -89,7 +88,7 @@ public class MainActivity extends AppCompatActivity {
         locationRequest = new LocationRequest();
         locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
         locationRequest.setSmallestDisplacement(0.00001f);
-        locationRequest.setInterval(2500);
+        locationRequest.setInterval(1000);
     }
 
     private boolean checkLocationPermission() {
@@ -163,8 +162,6 @@ public class MainActivity extends AppCompatActivity {
                         }
                     }
 
-                    HashMap<String, HashMap<String, Object>> dataMap = new HashMap<>();
-
                     runOnUiThread(new Runnable() {
                         @Override
                         public void run() {
@@ -176,7 +173,7 @@ public class MainActivity extends AppCompatActivity {
 
                             String humanReadableTime = getHumanReadableTime(currentTimeMillis);
                             long timeDiffMillis = currentTimeMillis - startTime;
-                            String timeStamp = String.valueOf((timeDiffMillis / 3600000)) + "h "
+                            String timeStamp = timeDiffMillis / 3600000 + "h "
                                     + (timeDiffMillis / 60000) + "m "
                                     + (timeDiffMillis / 1000) + "s @ " + humanReadableTime;
                             textView.setText(timeStamp);
@@ -200,9 +197,9 @@ public class MainActivity extends AppCompatActivity {
                             try {
                                 String jsonContentWLAN = new String(Files.readAllBytes(wlanDataFile.toPath()));
                                 if (!jsonContentWLAN.isEmpty()) {
-                                    Type hashMapType = new TypeToken<HashMap<String, HashMap<String, Object>>>() {
-                                    }.getType();
-                                    HashMap<String, HashMap<String, Object>> dataMap = gson.fromJson(jsonContentWLAN, hashMapType);
+//                                    Type hashMapType = new TypeToken<HashMap<String, HashMap<String, Object>>>() {
+//                                    }.getType();
+//                                    dataMap = gson.fromJson(jsonContentWLAN, hashMapType);
                                     Log.d("Wlan Data:", wlanDataFile.toString());
                                 } else {
                                     Log.e("JsonReader:", "Empty JSON content in " + wlanDataFile);
@@ -228,7 +225,7 @@ public class MainActivity extends AppCompatActivity {
                                             jsonWLAN.put("loc", new double[]{latitude, longitude});
                                             jsonWLAN.put("dist", calculateWLANDistance(sr.level, sr.frequency));
                                             jsonWLAN.put("sec", sr.capabilities);
-                                            jsonWLAN.put("time", System.currentTimeMillis() / 1000);
+                                            jsonWLAN.put("time", getEpochTime(System.currentTimeMillis()));
 
                                             dataMap.put("\"" + uniqueName + "\"", jsonWLAN);
                                         } catch (Exception e) {
@@ -236,9 +233,10 @@ public class MainActivity extends AppCompatActivity {
                                             e.printStackTrace();
                                         }
                                         try (FileWriter writer = new FileWriter(wlanDataFile, true)) {
-                                            String innerMap = gson.toJson(jsonWLAN);
-
-                                            writer.append(innerMap).append(",\n");
+                                            HashMap<String, Object> innerMap = new HashMap<>();
+                                            innerMap.put(uniqueName, jsonWLAN);
+                                            String innerJSON = gson.toJson(innerMap);
+                                            writer.append(innerJSON).append(",\n");
                                             final String TAG = "JSON file writer";
                                             Log.d(TAG, "WLAN data saved to file: " + wlanDataFile.getAbsolutePath());
                                         } catch (IOException e) {
@@ -311,7 +309,8 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onPause() {
         super.onPause();
-        stopLocationUpdates();
+        //stopLocationUpdates();
+        Log.d("onPause", "Nah");
     }
 
 
@@ -388,8 +387,7 @@ public class MainActivity extends AppCompatActivity {
         return Math.round(distance * 100) / 100.0; // Round to 2 decimal places
     }
 
-
-    private boolean isBetter(HashMap<String, HashMap<String, Object>> dataMap, String uniqueName, int level) {
+    private boolean isBetter(Map<String, HashMap<String, Object>> dataMap, String uniqueName, int level) {
         if ((dataMap.isEmpty()) || (!(uniqueName.length() > 0)) || (!dataMap.containsKey(uniqueName)))
             return true;
         HashMap<String, Object> innerMap = dataMap.get(uniqueName);
