@@ -32,6 +32,7 @@ import org.json.JSONObject;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOError;
 import java.io.IOException;
@@ -43,6 +44,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.TimeZone;
+
 
 public class MainActivity extends AppCompatActivity {
 
@@ -67,6 +69,23 @@ public class MainActivity extends AppCompatActivity {
             Manifest.permission.WRITE_EXTERNAL_STORAGE,
             Manifest.permission.WAKE_LOCK,
     };
+
+    public static class MyScanResults {
+        public int index;
+        private ScanResult scanResult;
+        public MyScanResults(ScanResult scanResult) {
+            this.scanResult = scanResult;
+            this.index++;
+        }
+        public String uniqueName;
+        public double[] loc = new double[2];
+        public double mDist;
+        public long time;
+        public static int sizeOf(MyScanResults[] myScanResults)
+        {
+            return myScanResults.length;
+        }
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -163,8 +182,7 @@ public class MainActivity extends AppCompatActivity {
                         }
                     }
 
-                    HashMap<String, HashMap<String, Object>> dataMap = new HashMap<>();
-
+                    HashMap<String, Integer> wlanIndexMap = new HashMap<>();
                     runOnUiThread(new Runnable() {
                         @Override
                         public void run() {
@@ -197,53 +215,44 @@ public class MainActivity extends AppCompatActivity {
                                 textView.scrollBy(0, 256);
                             }
 
-                            try {
-                                String jsonContentWLAN = new String(Files.readAllBytes(wlanDataFile.toPath()));
-                                if (!jsonContentWLAN.isEmpty()) {
-                                    Type hashMapType = new TypeToken<HashMap<String, HashMap<String, Object>>>() {
-                                    }.getType();
-                                    HashMap<String, HashMap<String, Object>> dataMap = gson.fromJson(jsonContentWLAN, hashMapType);
-                                    Log.d("Wlan Data:", wlanDataFile.toString());
-                                } else {
-                                    Log.e("JsonReader:", "Empty JSON content in " + wlanDataFile);
+                            @NonNull MyScanResults[] wlanCacheResults = new MyScanResults[4096];
+                            if (wlanDataFile.exists()){
+                                try (FileReader reader = new FileReader(wlanDataFile)){
+                                    wlanCacheResults = gson.fromJson(reader, MyScanResults[].class);
+                                    if (wlanCacheResults == null) throw new NullPointerException("This should never be null.");
+                                } catch (IOException e) {
+                                    e.printStackTrace();
+                                    Log.e("JsonReader:", "Error reading the " + wlanDataFile);
                                 }
-                            } catch (IOException e) {
-                                e.printStackTrace();
-                                Log.e("JsonReader:", "Error reading the " + wlanDataFile);
                             }
 
+
+                            int el = 0;
                             for (ScanResult sr : scanResults) {
                                 try {
                                     String uniqueName = getUniqueName(sr.SSID, sr.BSSID);
-                                    if (isBetter(dataMap, uniqueName, sr.level)) {
+                                    if (isBetter(wlanCacheResults, wlanIndexMap, uniqueName, sr.level)) {
                                         // Save the JSON object to a file
-
-                                        HashMap<String, Object> jsonWLAN = new HashMap<String, Object>();
                                         try {
-                                            jsonWLAN.put("SSID", sr.SSID);
-                                            jsonWLAN.put("BSSID", sr.BSSID);
-                                            jsonWLAN.put("frequency", sr.frequency);
-                                            jsonWLAN.put("channelWidth", sr.channelWidth);
-                                            jsonWLAN.put("level", sr.level);
-                                            jsonWLAN.put("loc", new double[]{latitude, longitude});
-                                            jsonWLAN.put("dist", calculateWLANDistance(sr.level, sr.frequency));
-                                            jsonWLAN.put("sec", sr.capabilities);
-                                            jsonWLAN.put("time", System.currentTimeMillis() / 1000);
-
-                                            dataMap.put("\"" + uniqueName + "\"", jsonWLAN);
+                                            wlanCacheResults[el] = new MyScanResults(sr);
+                                            wlanCacheResults[el].loc = new double[]{latitude, longitude};
+                                            wlanCacheResults[el].time = getEpochTime(System.currentTimeMillis());
+                                            wlanCacheResults[el].uniqueName = uniqueName;
+                                            wlanCacheResults[el].mDist = calculateWLANDistance(sr.level, sr.frequency);
+                                            wlanIndexMap.put(uniqueName, el);
+                                            el++;
+                                            try (FileWriter writer = new FileWriter(wlanDataFile)) {
+                                                String wholeJSON = gson.toJson(wlanCacheResults, MyScanResults[].class);
+                                                writer.write(wholeJSON);
+                                                final String TAG = "JSON file writer";
+                                                Log.d(TAG, "WLAN data saved to file: " + wlanDataFile.getAbsolutePath());
+                                            } catch (IOException e) {
+                                                final String TAG = "JSON file writer";
+                                                Log.e(TAG, "Cannot write to JSON.");
+                                                e.printStackTrace();
+                                            }
                                         } catch (Exception e) {
-                                            Log.e("jsonWLAN HashMap:", "Adding data to jsonWLAN failed.");
-                                            e.printStackTrace();
-                                        }
-                                        try (FileWriter writer = new FileWriter(wlanDataFile, true)) {
-                                            String innerMap = gson.toJson(jsonWLAN);
-
-                                            writer.append(innerMap).append(",\n");
-                                            final String TAG = "JSON file writer";
-                                            Log.d(TAG, "WLAN data saved to file: " + wlanDataFile.getAbsolutePath());
-                                        } catch (IOException e) {
-                                            final String TAG = "JSON file writer";
-                                            Log.e(TAG, "Cannot write to JSON.");
+                                            Log.e("MyScanResults:", "Adding data failed.");
                                             e.printStackTrace();
                                         }
                                     } else {
@@ -311,7 +320,8 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onPause() {
         super.onPause();
-        stopLocationUpdates();
+        //stopLocationUpdates();
+        Log.d("onPause:", "Nah nah nah nah nah nah");
     }
 
 
@@ -389,23 +399,17 @@ public class MainActivity extends AppCompatActivity {
     }
 
 
-    private boolean isBetter(HashMap<String, HashMap<String, Object>> dataMap, String uniqueName, int level) {
-        if ((dataMap.isEmpty()) || (!(uniqueName.length() > 0)) || (!dataMap.containsKey(uniqueName)))
+    private boolean isBetter(MyScanResults[] results, HashMap<String, Integer> indexMap, String uniqueName, int level) {
+        if ((indexMap.isEmpty()) || (!(uniqueName.length() > 0)) || (!indexMap.containsKey(uniqueName)))
             return true;
-        HashMap<String, Object> innerMap = dataMap.get(uniqueName);
-        int oldLevel = 0;
-        try {
-            Object levelObj = innerMap.get("level");
-            if (levelObj instanceof Integer) {
-                oldLevel = (int) levelObj;
-            } else if (levelObj instanceof String) {
-                oldLevel = Integer.parseInt((String) levelObj);
-            }
-        } catch (NumberFormatException e) {
-            Log.e("isBetter:", "Parsing oldLevel exception occurred:" + e);
+        Integer index = indexMap.get(uniqueName);
+        MyScanResults versusResults = results[index];
+        int oldLevel = versusResults.scanResult.level;
+        if (level > oldLevel) {
+            Log.d("isBetter:", "Accepting better:" + uniqueName + " : " + level);
+            return true;
         }
-        Log.d("isBetter:", "Accepting better:" + uniqueName + " : " + level);
-        return level > oldLevel;
+        return false;
     }
 
     private String createEmptyJSONFile(Boolean add_epoch, String CWD) {

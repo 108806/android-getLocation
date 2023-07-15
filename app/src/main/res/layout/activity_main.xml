@@ -6,7 +6,8 @@
 
     <ScrollView
         android:layout_width="match_parent"
-        android:layout_height="match_parent">
+        android:layout_height="match_parent"
+        tools:ignore="UselessParent">
 
         <TextView
             android:id="@+id/terminalTextView"
@@ -19,11 +20,5 @@
             tools:text="Terminal text will appear here" />
 
     </ScrollView>
-
-    <Button
-        android:id="@+id/button1"
-        android:layout_width="258dp"
-        android:layout_height="wrap_content"
-        android:text="Button" />
 
 </RelativeLayout>
