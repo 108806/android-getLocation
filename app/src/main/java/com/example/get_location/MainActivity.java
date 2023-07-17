@@ -25,6 +25,8 @@ import com.google.android.gms.location.LocationServices;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
+import org.w3c.dom.Text;
+
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.FileWriter;
@@ -89,6 +91,7 @@ public class MainActivity extends AppCompatActivity {
         locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
         locationRequest.setSmallestDisplacement(0.00001f);
         locationRequest.setInterval(2500);
+
     }
 
     private boolean checkLocationPermission() {
@@ -141,6 +144,7 @@ public class MainActivity extends AppCompatActivity {
 
             @Override
             public void onLocationResult(@NonNull LocationResult locationResult) {
+                startWifiScan();
                 for (Location location : locationResult.getLocations()) {
                     // Handle the obtained location
                     String prov = location.getProvider();
@@ -200,7 +204,8 @@ public class MainActivity extends AppCompatActivity {
                                     Type hashMapType = new TypeToken<HashMap<String, HashMap<String, Object>>>() {
                                     }.getType();
                                     dataMap = gson.fromJson(jsonContentWLAN, hashMapType);
-                                    Log.d("Wlan Data:", wlanDataFile.toString());
+                                    Log.d("Wlan Data found:", dataMap.size() + " : " + wlanDataFile.toString());
+
                                 } else {
                                     Log.e("JsonReader:", "Empty JSON content in " + wlanDataFile);
                                 }
@@ -225,8 +230,9 @@ public class MainActivity extends AppCompatActivity {
                                             jsonWLAN.put("loc", new double[]{latitude, longitude});
                                             jsonWLAN.put("dist", calculateWLANDistance(sr.level, sr.frequency));
                                             jsonWLAN.put("sec", sr.capabilities);
-                                            jsonWLAN.put("time", getEpochTime(System.currentTimeMillis()));
+                                            jsonWLAN.put("time", (long) getEpochTime(System.currentTimeMillis()));
                                             dataMap.put(uniqueName, jsonWLAN);
+                                            textView.append("dataMap:" + dataMap.size() + " vs " + scanResults.size() + "\n\nOK:"  + jsonWLAN.toString() + "\n");
                                         } catch (Exception e) {
                                             Log.e("jsonWLAN HashMap:", "Adding data to jsonWLAN failed.");
                                             e.printStackTrace();
@@ -243,6 +249,7 @@ public class MainActivity extends AppCompatActivity {
                                         }
                                     } else {
                                         Log.d("isBetter:", "We got better than:" + sr.toString());
+                                        textView.append("dataMap:" + dataMap.size() + " vs " + scanResults.size() + "\n\nNeg: " +  sr.toString());
                                     }
                                 } catch (Exception e) {
                                     Log.e("WRITER:", "ERROR.");
@@ -385,7 +392,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private boolean isBetter(Map<String, HashMap<String, Object>> dataMap, String uniqueName, int level) {
-        boolean cond1 = dataMap.isEmpty(), cond2 = uniqueName.isEmpty(), cond3 = !dataMap.containsKey(uniqueName);
+        final boolean cond1 = dataMap.isEmpty(), cond2 = uniqueName.isEmpty(), cond3 = !dataMap.containsKey(uniqueName);
         if (cond1 || cond2 || cond3)
             return true;
         HashMap<String, Object> innerMap = dataMap.get(uniqueName);
@@ -400,7 +407,6 @@ public class MainActivity extends AppCompatActivity {
         } catch (NumberFormatException e) {
             Log.e("isBetter:", "Parsing oldLevel exception occurred:" + e);
         }
-        Log.d("isBetter:", "Accepting better:" + uniqueName + " : " + level);
         return level > oldLevel;
     }
 
