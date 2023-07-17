@@ -88,7 +88,7 @@ public class MainActivity extends AppCompatActivity {
         locationRequest = new LocationRequest();
         locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
         locationRequest.setSmallestDisplacement(0.00001f);
-        locationRequest.setInterval(1000);
+        locationRequest.setInterval(2500);
     }
 
     private boolean checkLocationPermission() {
@@ -226,17 +226,14 @@ public class MainActivity extends AppCompatActivity {
                                             jsonWLAN.put("dist", calculateWLANDistance(sr.level, sr.frequency));
                                             jsonWLAN.put("sec", sr.capabilities);
                                             jsonWLAN.put("time", getEpochTime(System.currentTimeMillis()));
-
-                                            dataMap.put("\"" + uniqueName + "\"", jsonWLAN);
+                                            dataMap.put(uniqueName, jsonWLAN);
                                         } catch (Exception e) {
                                             Log.e("jsonWLAN HashMap:", "Adding data to jsonWLAN failed.");
                                             e.printStackTrace();
                                         }
-                                        try (FileWriter writer = new FileWriter(wlanDataFile, true)) {
-                                            HashMap<String, Object> innerMap = new HashMap<>();
-                                            innerMap.put(uniqueName, jsonWLAN);
-                                            String innerJSON = gson.toJson(innerMap);
-                                            writer.append(innerJSON).append(",\n");
+                                        try (FileWriter writer = new FileWriter(wlanDataFile, false)) {
+                                            String dataMapJSON = gson.toJson(dataMap);
+                                            writer.write(dataMapJSON);
                                             final String TAG = "JSON file writer";
                                             Log.d(TAG, "WLAN data saved to file: " + wlanDataFile.getAbsolutePath());
                                         } catch (IOException e) {
@@ -388,7 +385,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private boolean isBetter(Map<String, HashMap<String, Object>> dataMap, String uniqueName, int level) {
-        if ((dataMap.isEmpty()) || (!(uniqueName.length() > 0)) || (!dataMap.containsKey(uniqueName)))
+        boolean cond1 = dataMap.isEmpty(), cond2 = uniqueName.isEmpty(), cond3 = !dataMap.containsKey(uniqueName);
+        if (cond1 || cond2 || cond3)
             return true;
         HashMap<String, Object> innerMap = dataMap.get(uniqueName);
         int oldLevel = 0;
