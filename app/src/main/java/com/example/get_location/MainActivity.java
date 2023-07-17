@@ -197,9 +197,9 @@ public class MainActivity extends AppCompatActivity {
                             try {
                                 String jsonContentWLAN = new String(Files.readAllBytes(wlanDataFile.toPath()));
                                 if (!jsonContentWLAN.isEmpty()) {
-//                                    Type hashMapType = new TypeToken<HashMap<String, HashMap<String, Object>>>() {
-//                                    }.getType();
-//                                    dataMap = gson.fromJson(jsonContentWLAN, hashMapType);
+                                    Type hashMapType = new TypeToken<HashMap<String, HashMap<String, Object>>>() {
+                                    }.getType();
+                                    dataMap = gson.fromJson(jsonContentWLAN, hashMapType);
                                     Log.d("Wlan Data:", wlanDataFile.toString());
                                 } else {
                                     Log.e("JsonReader:", "Empty JSON content in " + wlanDataFile);
