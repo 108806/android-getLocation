@@ -230,9 +230,10 @@ public class MainActivity extends AppCompatActivity {
                                             jsonWLAN.put("loc", new double[]{latitude, longitude});
                                             jsonWLAN.put("dist", calculateWLANDistance(sr.level, sr.frequency));
                                             jsonWLAN.put("sec", sr.capabilities);
-                                            jsonWLAN.put("time", (long) getEpochTime(System.currentTimeMillis()));
+                                            jsonWLAN.put("time", getEpochTime(System.currentTimeMillis()));
                                             dataMap.put(uniqueName, jsonWLAN);
-                                            textView.append("dataMap:" + dataMap.size() + " vs " + scanResults.size() + "\n\nOK:"  + jsonWLAN.toString() + "\n");
+                                            textView.append("dataMap:" + dataMap.size() + " vs " + scanResults.size() + "\n\nOK:"  +
+                                                    sr.SSID + " @ " + sr.BSSID + "-> " + sr.level);
                                         } catch (Exception e) {
                                             Log.e("jsonWLAN HashMap:", "Adding data to jsonWLAN failed.");
                                             e.printStackTrace();
@@ -249,7 +250,8 @@ public class MainActivity extends AppCompatActivity {
                                         }
                                     } else {
                                         Log.d("isBetter:", "We got better than:" + sr.toString());
-                                        textView.append("dataMap:" + dataMap.size() + " vs " + scanResults.size() + "\n\nNeg: " +  sr.toString());
+                                        textView.append("dataMap:" + dataMap.size() + " vs " + scanResults.size() + "\n\nNeg: " +
+                                                sr.SSID + " @ " + sr.BSSID + "-> " + sr.level);
                                     }
                                 } catch (Exception e) {
                                     Log.e("WRITER:", "ERROR.");
@@ -352,7 +354,7 @@ public class MainActivity extends AppCompatActivity {
 
     private static long getEpochTime(long millis) {
         // Divide the millisecond value by 1000 to get seconds
-        return millis / 1000;
+        return millis / 1000L;
     }
 
     private String getUniqueName(String ssid, String bssid) {
