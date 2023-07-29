@@ -6,7 +6,8 @@
 
     <ScrollView
         android:layout_width="match_parent"
-        android:layout_height="match_parent">
+        android:layout_height="match_parent"
+        android:layout_above="@id/CompassTextView">
 
         <TextView
             android:id="@+id/terminalTextView"
@@ -19,4 +20,15 @@
             tools:text="Terminal text will appear here" />
 
     </ScrollView>
+
+    <TextView
+        android:id="@+id/CompassTextView"
+        android:layout_width="match_parent"
+        android:layout_height="143dp"
+        android:layout_alignParentBottom="true"
+        android:padding="1dp"
+        android:textSize="26sp"
+        android:background="#000000"
+        android:textColor="#FFFFFF"
+        android:text="@string/COMPASS_TEST" />
 </RelativeLayout>

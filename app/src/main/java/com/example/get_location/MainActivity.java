@@ -3,6 +3,10 @@ package com.example.get_location;
 import android.Manifest;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
 import android.location.Location;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiManager;
@@ -43,7 +47,7 @@ import java.util.Map;
 import java.util.TimeZone;
 import java.util.concurrent.ConcurrentHashMap;
 
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends AppCompatActivity implements SensorEventListener {
 
     private static final int PERMISSION_REQUEST_CODE = 1;
     private FusedLocationProviderClient fusedLocationClient;
@@ -56,6 +60,13 @@ public class MainActivity extends AppCompatActivity {
     private long startTime = 0;
     List<ScanResult> scanResults;
 
+    private SensorManager sensorManager;
+    private Sensor magnetometer;
+    private float[] lastMagnetometerValues = new float[3];
+    private float[] lastAccelerometerValues = new float[3];
+    private boolean hasLastMagnetometerValues = false;
+    private boolean hasLastAccelerometerValues = false;
+
     public static String[] permissions = {
             Manifest.permission.ACCESS_FINE_LOCATION,
             Manifest.permission.ACCESS_COARSE_LOCATION,
@@ -65,6 +76,7 @@ public class MainActivity extends AppCompatActivity {
             Manifest.permission.READ_EXTERNAL_STORAGE,
             Manifest.permission.WRITE_EXTERNAL_STORAGE,
             Manifest.permission.WAKE_LOCK,
+            Manifest.permission_group.SENSORS,
     };
 
     Map<String, HashMap<String, Object>> dataMap = new ConcurrentHashMap<>();
@@ -79,12 +91,57 @@ public class MainActivity extends AppCompatActivity {
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
         createLocationRequest();
         createLocationCallback();
+
+        // Initialize SensorManager and sensors
+        sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
+        magnetometer = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD);
+        Sensor accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+
+        // Register sensor listeners
+        sensorManager.registerListener((SensorEventListener) this, magnetometer, SensorManager.SENSOR_DELAY_GAME);
+        sensorManager.registerListener((SensorEventListener) this, accelerometer, SensorManager.SENSOR_DELAY_GAME);
         if (checkLocationPermission()) {
             startWifiScan();
         } else {
             requestLocationPermission();
         }
     }
+
+    @Override
+    public void onSensorChanged(SensorEvent event) {
+        Log.d("onSensorChanged: ", event.toString());
+        if (event.sensor == magnetometer) {
+            System.arraycopy(event.values, 0, lastMagnetometerValues, 0, event.values.length);
+            hasLastMagnetometerValues = true;
+        } else if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
+            System.arraycopy(event.values, 0, lastAccelerometerValues, 0, event.values.length);
+            hasLastAccelerometerValues = true;
+        }
+
+        if (hasLastAccelerometerValues && hasLastMagnetometerValues) {
+            float[] rotationMatrix = new float[9];
+            if (SensorManager.getRotationMatrix(rotationMatrix, null, lastAccelerometerValues, lastMagnetometerValues)) {
+                float[] orientationValues = new float[3];
+                SensorManager.getOrientation(rotationMatrix, orientationValues);
+
+                // Calculate the orientation in degrees
+                float azimuth = (float) Math.toDegrees(orientationValues[0]);
+                if (azimuth < 0) {
+                    azimuth += 360;
+                }
+
+                // Update the compass direction
+                TextView compassTextView = findViewById(R.id.CompassTextView);
+                compassTextView.setText("Compass Direction: " + azimuth + "°");
+            }
+        }
+    }
+
+    @Override
+    public void onAccuracyChanged(Sensor sensor, int accuracy) {
+        Log.d("onAccuracyChanged: ", String.valueOf(accuracy));
+    }
+
 
     private void createLocationRequest() {
         locationRequest = new LocationRequest();
@@ -184,6 +241,11 @@ public class MainActivity extends AppCompatActivity {
                             String locData = "\nLat: " + latitude + "\nLon: " + longitude + "," + location.getTime();
                             textView.append(locData);
 
+                            // Calculate N/S/W/E direction
+                            double bearing = oldLocation != null ? oldLocation.bearingTo(location) : 0.0;
+                            String direction = getDirectionFromBearing(bearing);
+                            Log.d("direction: ", direction);
+
                             if (oldLocation != null) {
                                 long oldTime = oldLocation.getTime(), newTime = location.getTime();
                                 long timeDiff = newTime - oldTime;
@@ -232,7 +294,7 @@ public class MainActivity extends AppCompatActivity {
                                             jsonWLAN.put("sec", sr.capabilities);
                                             jsonWLAN.put("time", getEpochTime(System.currentTimeMillis()));
                                             dataMap.put(uniqueName, jsonWLAN);
-                                            textView.append("dataMap:" + dataMap.size() + " vs " + scanResults.size() + "\n\nOK:"  +
+                                            textView.append("\ndataMap:" + dataMap.size() + " vs " + scanResults.size() + "\n\nOK:" +
                                                     sr.SSID + " @ " + sr.BSSID + "-> " + sr.level);
                                         } catch (Exception e) {
                                             Log.e("jsonWLAN HashMap:", "Adding data to jsonWLAN failed.");
@@ -250,7 +312,7 @@ public class MainActivity extends AppCompatActivity {
                                         }
                                     } else {
                                         Log.d("isBetter:", "We got better than:" + sr.toString());
-                                        textView.append("dataMap:" + dataMap.size() + " vs " + scanResults.size() + "\n\nNeg: " +
+                                        textView.append("\ndataMap:" + dataMap.size() + " vs " + scanResults.size() + "\n\nNeg: " +
                                                 sr.SSID + " @ " + sr.BSSID + "-> " + sr.level);
                                     }
                                 } catch (Exception e) {
@@ -266,6 +328,28 @@ public class MainActivity extends AppCompatActivity {
             }
         };
     }
+
+    private String getDirectionFromBearing(double bearing) {
+        if (bearing >= 337.5 || bearing < 22.5) {
+            return "N";
+        } else if (bearing >= 22.5 && bearing < 67.5) {
+            return "NE";
+        } else if (bearing >= 67.5 && bearing < 112.5) {
+            return "E";
+        } else if (bearing >= 112.5 && bearing < 157.5) {
+            return "SE";
+        } else if (bearing >= 157.5 && bearing < 202.5) {
+            return "S";
+        } else if (bearing >= 202.5 && bearing < 247.5) {
+            return "SW";
+        } else if (bearing >= 247.5 && bearing < 292.5) {
+            return "W";
+        } else if (bearing >= 292.5 && bearing < 337.5) {
+            return "NW";
+        }
+        return "Unknown";
+    }
+
 
     public static class SpeedCalculator {
         private static final double EARTH_RADIUS_KM = 6371;

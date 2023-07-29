@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">GET_LOCATION</string>
+    <string name="COMPASS_TEST">COMPASS_VALUE</string>
 </resources>
