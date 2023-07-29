@@ -4,22 +4,51 @@
     android:layout_height="match_parent"
     android:background="#000000">
 
-    <ScrollView
+    <TextView
+        android:id="@+id/terminalTextView"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="#000000"
+        android:padding="8dp"
+        android:textColor="#FFFFFF"
+        android:textSize="18sp"
+        tools:text="Terminal text will appear here" />
+
+    <LinearLayout
+        android:id="@+id/scrollViewLayout"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_above="@id/CompassTextView">
+        android:layout_below="@id/terminalTextView"
+        android:layout_above="@id/CompassTextView"
+        android:orientation="vertical">
 
         <TextView
-            android:id="@+id/terminalTextView"
+            android:id="@+id/gsmView"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:background="#000000"
             android:padding="8dp"
             android:textColor="#FFFFFF"
-            android:textSize="18sp"
-            tools:text="Terminal text will appear here" />
+            android:textSize="14sp"
+            tools:text="GSM signal information will appear here" />
 
-    </ScrollView>
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_below="@id/gsmView">
+
+            <TextView
+                android:id="@+id/terminalScrollView"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="#000000"
+                android:padding="8dp"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                tools:text="Terminal text will appear here" />
+        </ScrollView>
+
+    </LinearLayout>
 
     <TextView
         android:id="@+id/CompassTextView"

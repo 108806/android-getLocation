@@ -7,11 +7,15 @@ import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.location.Address;
+import android.location.Geocoder;
 import android.location.Location;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiManager;
 import android.os.Bundle;
 import android.os.Environment;
+import android.telephony.CellInfo;
+import android.telephony.TelephonyManager;
 import android.util.Log;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -28,8 +32,6 @@ import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
-
-import org.w3c.dom.Text;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -62,11 +64,13 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
     private SensorManager sensorManager;
     private Sensor magnetometer;
-    private float[] lastMagnetometerValues = new float[3];
-    private float[] lastAccelerometerValues = new float[3];
+    private final float[] lastMagnetometerValues = new float[3];
+    private final float[] lastAccelerometerValues = new float[3];
     private boolean hasLastMagnetometerValues = false;
     private boolean hasLastAccelerometerValues = false;
-    private String direction;
+    private String moveDirection, address;
+
+    private int[] gsmData;
 
     public static String[] permissions = {
             Manifest.permission.ACCESS_FINE_LOCATION,
@@ -78,10 +82,12 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             Manifest.permission.WRITE_EXTERNAL_STORAGE,
             Manifest.permission.WAKE_LOCK,
             Manifest.permission.INTERNET,
+            Manifest.permission.READ_PHONE_STATE,
             Manifest.permission_group.SENSORS,
     };
 
-    Map<String, HashMap<String, Object>> dataMap = new ConcurrentHashMap<>();
+    Map<String, HashMap<String, Object>> globalWifiMap = new ConcurrentHashMap<>();
+    Map <String, HashMap<String, Object>> globalGsmMap = new ConcurrentHashMap<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -98,11 +104,11 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
         magnetometer = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD);
         Sensor accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
-
+        Log.d("magnetometer VENDOR:", magnetometer.getVendor());
         // Register sensor listeners
         sensorManager.registerListener((SensorEventListener) this, magnetometer, SensorManager.SENSOR_DELAY_GAME);
         sensorManager.registerListener((SensorEventListener) this, accelerometer, SensorManager.SENSOR_DELAY_GAME);
-        if (checkLocationPermission()) {
+        if (checkPermissions()) {
             startWifiScan();
         } else {
             requestLocationPermission();
@@ -120,12 +126,14 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             hasLastAccelerometerValues = true;
         }
 
+        float sigPwr = event.sensor.getPower();
+
         if (hasLastAccelerometerValues && hasLastMagnetometerValues) {
             float[] rotationMatrix = new float[9];
             if (SensorManager.getRotationMatrix(rotationMatrix, null, lastAccelerometerValues, lastMagnetometerValues)) {
                 float[] orientationValues = new float[3];
                 SensorManager.getOrientation(rotationMatrix, orientationValues);
-
+                String dirFromAz = null;
                 // Calculate the orientation in degrees
                 float azimuth = (float) Math.toDegrees(orientationValues[0]);
                 if (azimuth < 0) {
@@ -133,8 +141,9 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                 }
 
                 // Update the compass direction
+                dirFromAz = getDirectionFromAzimuth(azimuth);
                 TextView compassTextView = findViewById(R.id.CompassTextView);
-                compassTextView.setText("Compass Direction: " + azimuth + "°" + direction);
+                compassTextView.setText(azimuth + "°" + dirFromAz + " @\n" + address + " @ " + sigPwr);
             }
         }
     }
@@ -145,6 +154,41 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     }
 
 
+    private int[] getGsmSignalInfo() {
+        int[] gsmData = new int[3]; // To store CID, LAC, and Signal Strength
+        TelephonyManager telephonyManager = (TelephonyManager) getSystemService(Context.TELEPHONY_SERVICE);
+        if (telephonyManager != null) {
+            try {
+                if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                    // TODO: Consider calling
+                    //    ActivityCompat#requestPermissions
+                    // here to request the missing permissions, and then overriding
+                    //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+                    //                                          int[] grantResults)
+                    // to handle the case where the user grants the permission. See the documentation
+                    // for ActivityCompat#requestPermissions for more details.
+                    Log.e("getGsmSignalInfo:", "No permissions.");
+                    return null;
+                }
+                for (CellInfo cellInfo : telephonyManager.getAllCellInfo()) {
+                    HashMap<String, Integer> paramsMap = extractParamsFromCellinfoString(cellInfo.toString());
+                    String identifier = paramsMap.get("MCC") + "_" +
+                            paramsMap.get("MNC") + "_" +
+                            paramsMap.get("PCI") + "_" +
+                            paramsMap.get("EARFCN");
+                    globalGsmMap.put(identifier, paramsMap);
+                }
+            } catch (Exception e) {
+                Log.e("getGsmSignalInfo", "Error retrieving GSM signal info: " + e.toString());
+                // Provide fallback values in case of failure
+                gsmData[0] = -1; // Invalid CID
+                gsmData[1] = -1; // Invalid LAC
+                gsmData[2] = -1; // Invalid Signal Strength
+            }
+        }
+        return gsmData;
+    }
+
     private void createLocationRequest() {
         locationRequest = new LocationRequest();
         locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
@@ -153,7 +197,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
     }
 
-    private boolean checkLocationPermission() {
+    private boolean checkPermissions() {
         for (String permission : permissions) {
             int permissionState = ContextCompat.checkSelfPermission(this, permission);
             if (permissionState != PackageManager.PERMISSION_GRANTED) {
@@ -226,6 +270,17 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                         }
                     }
 
+                    File gsmDataFile = new File(CWD + "/" + "gsm_data.json");
+                    if (!gsmDataFile.exists()){
+                        try {
+                            FileOutputStream fos = new FileOutputStream(gsmDataFile); /// not working too
+                            fos.close();
+                            Log.d("Create new file:", "File created:" + gsmDataFile.getAbsolutePath());
+                        }catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
+                    }
+
                     runOnUiThread(new Runnable() {
                         @Override
                         public void run() {
@@ -238,16 +293,18 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                             String humanReadableTime = getHumanReadableTime(currentTimeMillis);
                             long timeDiffMillis = currentTimeMillis - startTime;
                             String timeStamp = timeDiffMillis / 3600000 + "h "
-                                    + (timeDiffMillis / 60000) + "m "
-                                    + (timeDiffMillis / 1000) + "s @ " + humanReadableTime;
+                                    + (timeDiffMillis % 60000) + "m "
+                                    + (timeDiffMillis % 1000) + "s @ " + humanReadableTime;
                             textView.setText(timeStamp);
                             String locData = "\nLat: " + latitude + "\nLon: " + longitude + "," + location.getTime();
                             textView.append(locData);
+                            TextView scrollView = findViewById(R.id.terminalScrollView);
 
                             // Calculate N/S/W/E direction
                             double bearing = oldLocation != null ? oldLocation.bearingTo(location) : 0.0;
-                            direction = getDirectionFromBearing(bearing);
-                            Log.d("direction: ", direction);
+                            moveDirection = getDirectionFromBearing(bearing);
+                            address = getStreetName(latitude, longitude);
+                            Log.d("direction: ", moveDirection + " : " + address + " @ " + bearing);
 
                             if (oldLocation != null) {
                                 long oldTime = oldLocation.getTime(), newTime = location.getTime();
@@ -256,11 +313,20 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                                 double dist = SpeedCalculator.calculateMoveDistance(oldLocation.getLatitude(), oldLocation.getLongitude(), latitude, longitude);
                                 globalDist += dist;
                                 String moveData = String.format(Locale.GERMANY, "\nSPEED: %.3f kmph", speedKmph)
-                                        + String.format(Locale.GERMANY, "\nTIME: %03d", timeDiff)
-                                        + String.format(Locale.GERMANY, "\nDIST: %.3f m", dist)
-                                        + String.format(Locale.GERMANY, "\nGLOBAL DIST: %.3f m\n", globalDist);
-                                textView.append(moveData);
+                                        + String.format(Locale.GERMANY, " TIME: %03d", timeDiff)
+                                        + String.format(Locale.GERMANY, " DIST: %.3f m ", dist)
+                                        + "mDir:" + moveDirection
+                                        + String.format(Locale.GERMANY, " GLOB DIST: %.3f m \n", globalDist);
+                                scrollView.setText(moveData);
                                 textView.scrollBy(0, 256);
+
+                                gsmData = getGsmSignalInfo();
+                                final String gsmDataForHuman = "\nCID:" + gsmData[0]
+                                        + "\nLAC: " + gsmData[1]
+                                        + "\nMCC: " + gsmData[2]
+                                        + "\nSTRENGTH: " + gsmData[3];
+                                TextView gsmView = findViewById(R.id.gsmView);
+                                gsmView.setText(gsmDataForHuman);
                             }
 
                             try {
@@ -268,8 +334,8 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                                 if (!jsonContentWLAN.isEmpty()) {
                                     Type hashMapType = new TypeToken<HashMap<String, HashMap<String, Object>>>() {
                                     }.getType();
-                                    dataMap = gson.fromJson(jsonContentWLAN, hashMapType);
-                                    Log.d("Wlan Data found:", dataMap.size() + " : " + wlanDataFile.toString());
+                                    globalWifiMap = gson.fromJson(jsonContentWLAN, hashMapType);
+                                    Log.d("Wlan Data found:", globalWifiMap.size() + " : " + wlanDataFile.toString());
 
                                 } else {
                                     Log.e("JsonReader:", "Empty JSON content in " + wlanDataFile);
@@ -278,11 +344,28 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                                 e.printStackTrace();
                                 Log.e("JsonReader:", "Error reading the " + wlanDataFile);
                             }
+                            try {
+                                String jsonContentGSM = new String(Files.readAllBytes(gsmDataFile.toPath()));
+                                if (!jsonContentGSM.isEmpty()) {
+                                    Type hashMapType = new TypeToken<HashMap<String, HashMap<String, Object>>>() {
+                                    }.getType();
+                                    globalGsmMap = gson.fromJson(jsonContentGSM, hashMapType);
+                                    Log.d("GSM Data found:", globalGsmMap.size() + " : " + gsmDataFile.toString());
+
+                                } else {
+                                    Log.e("JsonReader:", "Empty JSON content in " + gsmDataFile);
+                                }
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                                Log.e("JsonReader:", "Error reading the " + gsmDataFile);
+                            }
+
+
 
                             for (ScanResult sr : scanResults) {
                                 try {
                                     String uniqueName = getUniqueName(sr.SSID, sr.BSSID);
-                                    if (isBetter(dataMap, uniqueName, sr.level)) {
+                                    if (isBetter(globalWifiMap, uniqueName, sr.level)) {
                                         // Save the JSON object to a file
 
                                         HashMap<String, Object> jsonWLAN = new HashMap<String, Object>();
@@ -295,16 +378,17 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                                             jsonWLAN.put("loc", new double[]{latitude, longitude});
                                             jsonWLAN.put("dist", calculateWLANDistance(sr.level, sr.frequency));
                                             jsonWLAN.put("sec", sr.capabilities);
+                                            jsonWLAN.put("addr", address);
                                             jsonWLAN.put("time", getEpochTime(System.currentTimeMillis()));
-                                            dataMap.put(uniqueName, jsonWLAN);
-                                            textView.append("\ndataMap:" + dataMap.size() + " vs " + scanResults.size() + "\nOK:" +
+                                            globalWifiMap.put(uniqueName, jsonWLAN);
+                                            scrollView.append("\ndataMap:" + globalWifiMap.size() + " vs " + scanResults.size() + "\nOK:" +
                                                     sr.SSID + " @ " + sr.BSSID + "-> " + sr.level);
                                         } catch (Exception e) {
                                             Log.e("jsonWLAN HashMap:", "Adding data to jsonWLAN failed.");
                                             e.printStackTrace();
                                         }
                                         try (FileWriter writer = new FileWriter(wlanDataFile, false)) {
-                                            String dataMapJSON = gson.toJson(dataMap);
+                                            String dataMapJSON = gson.toJson(globalWifiMap);
                                             writer.write(dataMapJSON);
                                             final String TAG = "JSON file writer";
                                             Log.d(TAG, "WLAN data saved to file: " + wlanDataFile.getAbsolutePath());
@@ -315,8 +399,8 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                                         }
                                     } else {
                                         Log.d("isBetter:", "We got better than:" + sr.toString());
-                                        textView.append("\ndataMap:" + dataMap.size() + " vs " + scanResults.size() + "\nNeg: " +
-                                                sr.SSID + " @ " + sr.BSSID + "-> " + sr.level);
+                                        scrollView.append("SRs: " + scanResults.size() + " Neg: " +
+                                                sr.SSID + " @ " + sr.BSSID + "-> " + sr.level + "\n");
                                     }
                                 } catch (Exception e) {
                                     Log.e("WRITER:", "ERROR.");
@@ -330,6 +414,20 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                 }
             }
         };
+    }
+
+    private String getStreetName(double latitude, double longitude) {
+        Geocoder geocoder = new Geocoder(this, Locale.getDefault());
+        try {
+            List<Address> addresses = geocoder.getFromLocation(latitude, longitude, 1);
+            if (addresses != null && addresses.size() > 0) {
+                Address address = addresses.get(0);
+                return address.getAddressLine(0);
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return "Unknown";
     }
 
     private String getDirectionFromBearing(double bearing) {
@@ -351,6 +449,58 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             return "NW";
         }
         return "Unknown";
+    }
+
+    public HashMap<String, Integer> extractParamsFromCellinfoString(String cellInfoString) {
+        HashMap<String, Integer> paramsMap = new HashMap<>();
+        try {
+            String[] parts = cellInfoString.split("\\s+");
+            if (parts.length < 2) {
+                throw new IllegalArgumentException("Invalid input string format.");
+            }
+
+            // Extract CellIdentityLte parameters
+            String cellIdentity = parts[1];
+            String[] identityParams = cellIdentity.split("\\{|\\}|mMcc=|mMnc=|mPci=|mEarfcn=");
+            int mcc = Integer.parseInt(identityParams[2]);
+            int mnc = Integer.parseInt(identityParams[4]);
+            int pci = Integer.parseInt(identityParams[6]);
+            int earfcn = Integer.parseInt(identityParams[8]);
+
+            // Extract CellSignalStrengthLte parameters
+            String signalStrength = parts[2];
+            String[] signalParams = signalStrength.split("ss=| rsrp=| rsrq=| rssnr=| cqi=| ta=");
+            int ss = Integer.parseInt(signalParams[1]);
+            int rsrp = Integer.parseInt(signalParams[2]);
+            int rsrq = Integer.parseInt(signalParams[3]);
+            int rssnr = Integer.parseInt(signalParams[4]);
+            int cqi = Integer.parseInt(signalParams[5]);
+            int ta = Integer.parseInt(signalParams[6]);
+
+            // Add parameters to the HashMap
+            paramsMap.put("MCC", mcc);
+            paramsMap.put("MNC", mnc);
+            paramsMap.put("PCI", pci);
+            paramsMap.put("EARFCN", earfcn);
+            paramsMap.put("SS", ss);
+            paramsMap.put("RSRP", rsrp);
+            paramsMap.put("RSRQ", rsrq);
+            paramsMap.put("RSSNR", rssnr);
+            paramsMap.put("CQI", cqi);
+            paramsMap.put("TA", ta);
+
+        } catch (Exception e) {
+            Log.e("Params", "Error parsing string: " + e.getMessage());
+        }
+
+        return paramsMap;
+    }
+
+
+    private String getDirectionFromAzimuth(float azimuth) {
+        String[] directions = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"};
+        int index = Math.round(azimuth / 45.0f) % 8;
+        return directions[index];
     }
 
 
@@ -392,7 +542,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     @Override
     protected void onResume() {
         super.onResume();
-        if (checkLocationPermission()) {
+        if (checkPermissions()) {
             startLocationUpdates();
         } else {
             requestLocationPermission();
