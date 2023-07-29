@@ -66,6 +66,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     private float[] lastAccelerometerValues = new float[3];
     private boolean hasLastMagnetometerValues = false;
     private boolean hasLastAccelerometerValues = false;
+    private String direction;
 
     public static String[] permissions = {
             Manifest.permission.ACCESS_FINE_LOCATION,
@@ -76,6 +77,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             Manifest.permission.READ_EXTERNAL_STORAGE,
             Manifest.permission.WRITE_EXTERNAL_STORAGE,
             Manifest.permission.WAKE_LOCK,
+            Manifest.permission.INTERNET,
             Manifest.permission_group.SENSORS,
     };
 
@@ -132,7 +134,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
                 // Update the compass direction
                 TextView compassTextView = findViewById(R.id.CompassTextView);
-                compassTextView.setText("Compass Direction: " + azimuth + "°");
+                compassTextView.setText("Compass Direction: " + azimuth + "°" + direction);
             }
         }
     }
@@ -208,6 +210,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                     double latitude = location.getLatitude();
                     double longitude = location.getLongitude();
 
+
                     String CWD = Environment.getExternalStorageDirectory().getPath();
                     CWD = emulateMyC0KK(CWD);
                     File wlanDataFile = new File(CWD + "/" + "wlan_data.json");
@@ -243,7 +246,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
                             // Calculate N/S/W/E direction
                             double bearing = oldLocation != null ? oldLocation.bearingTo(location) : 0.0;
-                            String direction = getDirectionFromBearing(bearing);
+                            direction = getDirectionFromBearing(bearing);
                             Log.d("direction: ", direction);
 
                             if (oldLocation != null) {
@@ -294,7 +297,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                                             jsonWLAN.put("sec", sr.capabilities);
                                             jsonWLAN.put("time", getEpochTime(System.currentTimeMillis()));
                                             dataMap.put(uniqueName, jsonWLAN);
-                                            textView.append("\ndataMap:" + dataMap.size() + " vs " + scanResults.size() + "\n\nOK:" +
+                                            textView.append("\ndataMap:" + dataMap.size() + " vs " + scanResults.size() + "\nOK:" +
                                                     sr.SSID + " @ " + sr.BSSID + "-> " + sr.level);
                                         } catch (Exception e) {
                                             Log.e("jsonWLAN HashMap:", "Adding data to jsonWLAN failed.");
@@ -312,7 +315,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                                         }
                                     } else {
                                         Log.d("isBetter:", "We got better than:" + sr.toString());
-                                        textView.append("\ndataMap:" + dataMap.size() + " vs " + scanResults.size() + "\n\nNeg: " +
+                                        textView.append("\ndataMap:" + dataMap.size() + " vs " + scanResults.size() + "\nNeg: " +
                                                 sr.SSID + " @ " + sr.BSSID + "-> " + sr.level);
                                     }
                                 } catch (Exception e) {
