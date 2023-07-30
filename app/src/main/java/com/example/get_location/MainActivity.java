@@ -49,6 +49,15 @@ import java.util.Map;
 import java.util.TimeZone;
 import java.util.concurrent.ConcurrentHashMap;
 
+import android.telephony.CellIdentityGsm;
+import android.telephony.CellIdentityWcdma;
+import android.telephony.CellInfo;
+import android.telephony.CellInfoGsm;
+import android.telephony.CellInfoLte;
+import android.telephony.CellInfoCdma;
+import android.telephony.CellInfoTdscdma;
+import android.telephony.TelephonyManager;
+
 public class MainActivity extends AppCompatActivity implements SensorEventListener {
 
     private static final int PERMISSION_REQUEST_CODE = 1;
@@ -157,8 +166,10 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     private int[] getGsmSignalInfo() {
         int[] gsmData = new int[3]; // To store CID, LAC, and Signal Strength
         TelephonyManager telephonyManager = (TelephonyManager) getSystemService(Context.TELEPHONY_SERVICE);
+        HashMap<String, HashMap<String, Object>> currentResults = new HashMap<>();
         if (telephonyManager != null) {
             try {
+                CellTypeUtil cellTypeUtil;
                 if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
                     // TODO: Consider calling
                     //    ActivityCompat#requestPermissions
@@ -171,11 +182,19 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                     return null;
                 }
                 for (CellInfo cellInfo : telephonyManager.getAllCellInfo()) {
-                    HashMap<String, Integer> paramsMap = extractParamsFromCellinfoString(cellInfo.toString());
+                    HashMap<String, Object> paramsMap = extractParamsFromCellinfoString(cellInfo.toString());
+                    paramsMap.put("addr", address);
+                    paramsMap.put("loc", new double[]{oldLocation.getLatitude(), oldLocation.getLongitude()});
+                    paramsMap.put("time", getEpochTime(System.currentTimeMillis()));
+                    //TODO: paramsMap.put("type", cellTypeUtil()
                     String identifier = paramsMap.get("MCC") + "_" +
                             paramsMap.get("MNC") + "_" +
                             paramsMap.get("PCI") + "_" +
                             paramsMap.get("EARFCN");
+                    if (currentResults.containsKey(identifier)) {
+                        identifier += "_WEIRD_DUP";
+                    }
+                    currentResults.put(identifier, paramsMap);
                     globalGsmMap.put(identifier, paramsMap);
                 }
             } catch (Exception e) {
@@ -260,7 +279,6 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                     File wlanDataFile = new File(CWD + "/" + "wlan_data.json");
                     if (!wlanDataFile.exists()) {
                         try {
-                            //boolean result = wlanDataFile.createNewFile(); not working
                             FileOutputStream fos = new FileOutputStream(wlanDataFile); /// not working too
                             fos.close();
                             Log.d("Create new file:", "File created:" + wlanDataFile.getAbsolutePath());
@@ -273,7 +291,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                     File gsmDataFile = new File(CWD + "/" + "gsm_data.json");
                     if (!gsmDataFile.exists()){
                         try {
-                            FileOutputStream fos = new FileOutputStream(gsmDataFile); /// not working too
+                            FileOutputStream fos = new FileOutputStream(gsmDataFile);
                             fos.close();
                             Log.d("Create new file:", "File created:" + gsmDataFile.getAbsolutePath());
                         }catch (IOException e) {
@@ -451,8 +469,8 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         return "Unknown";
     }
 
-    public HashMap<String, Integer> extractParamsFromCellinfoString(String cellInfoString) {
-        HashMap<String, Integer> paramsMap = new HashMap<>();
+    public HashMap<String, Object> extractParamsFromCellinfoString(String cellInfoString) {
+        HashMap<String, Object> paramsMap = new HashMap<>();
         try {
             String[] parts = cellInfoString.split("\\s+");
             if (parts.length < 2) {
@@ -477,23 +495,101 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             int cqi = Integer.parseInt(signalParams[5]);
             int ta = Integer.parseInt(signalParams[6]);
 
-            // Add parameters to the HashMap
+            // Add parameters to the HashMap:
+            // MCC (Mobile Country Code) - The mobile country code of the network operator.
             paramsMap.put("MCC", mcc);
+
+            // MNC (Mobile Network Code) - The mobile network code of the network operator.
             paramsMap.put("MNC", mnc);
+
+            // PCI (Physical Cell Identifier) - A unique identifier for the physical cell within the LTE network.
             paramsMap.put("PCI", pci);
+
+            // EARFCN (E-UTRA Absolute Radio Frequency Channel Number) - The absolute radio frequency channel number used by the cell.
             paramsMap.put("EARFCN", earfcn);
+
+            // SS (Signal Strength) - The signal strength of the cell in dBm (decibels relative to one milliwatt).
             paramsMap.put("SS", ss);
+
+            // RSRP (Reference Signal Received Power) - The power level of the received signal reference signal in dBm.
             paramsMap.put("RSRP", rsrp);
+
+            // RSRQ (Reference Signal Received Quality) - The quality of the received signal reference signal in dB.
             paramsMap.put("RSRQ", rsrq);
+
+            // RSSNR (Reference Signal Signal-to-Noise Ratio) - The signal-to-noise ratio of the reference signal in dB.
             paramsMap.put("RSSNR", rssnr);
+
+            // CQI (Channel Quality Indicator) - A measurement of the quality of the wireless channel.
             paramsMap.put("CQI", cqi);
+
+             // TA (Timing Advance) - The timing advance value for the cell in units of micro-seconds (μs).
             paramsMap.put("TA", ta);
+
 
         } catch (Exception e) {
             Log.e("Params", "Error parsing string: " + e.getMessage());
         }
 
         return paramsMap;
+    }
+
+    public static class CellTypeUtil {
+
+        public enum CellType {
+            UNKNOWN,
+            GSM,
+            CDMA,
+            WCDMA,
+            LTE,
+            TDSCDMA
+        }
+
+        public static CellType getCellTypeFromEarfcn(int earfcn) {
+            if (isGsmFrequency(earfcn)) {
+                return CellType.GSM;
+            } else if (isCdmaFrequency(earfcn)) {
+                return CellType.CDMA;
+            } else if (isWcdmaFrequency(earfcn)) {
+                return CellType.WCDMA;
+            } else if (isLteFrequency(earfcn)) {
+                return CellType.LTE;
+            } else if (isTdscdmaFrequency(earfcn)) {
+                return CellType.TDSCDMA;
+            } else {
+                return CellType.UNKNOWN;
+            }
+        }
+
+        private static boolean isGsmFrequency(int earfcn) {
+            // Check if the EARFCN falls within GSM frequency bands
+            // Modify this condition based on the specific GSM bands you want to consider
+            return (earfcn >= 900 && earfcn <= 1800);
+        }
+
+        private static boolean isCdmaFrequency(int earfcn) {
+            // Check if the EARFCN falls within CDMA frequency bands
+            // Modify this condition based on the specific CDMA bands you want to consider
+            return (earfcn >= 1 && earfcn <= 1200);
+        }
+
+        private static boolean isWcdmaFrequency(int earfcn) {
+            // Check if the EARFCN falls within WCDMA frequency bands
+            // Modify this condition based on the specific WCDMA bands you want to consider
+            return (earfcn >= 10562 && earfcn <= 10838);
+        }
+
+        private static boolean isLteFrequency(int earfcn) {
+            // Check if the EARFCN falls within LTE frequency bands
+            // Modify this condition based on the specific LTE bands you want to consider
+            return (earfcn >= 1 && earfcn <= 3000);
+        }
+
+        private static boolean isTdscdmaFrequency(int earfcn) {
+            // Check if the EARFCN falls within TD-SCDMA frequency bands
+            // Modify this condition based on the specific TD-SCDMA bands you want to consider
+            return (earfcn >= 9210 && earfcn <= 9659);
+        }
     }
 
 
