@@ -165,46 +165,46 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
     private int[] getGsmSignalInfo() {
         int[] gsmData = new int[3]; // To store CID, LAC, and Signal Strength
-        TelephonyManager telephonyManager = (TelephonyManager) getSystemService(Context.TELEPHONY_SERVICE);
-        HashMap<String, HashMap<String, Object>> currentResults = new HashMap<>();
-        if (telephonyManager != null) {
-            try {
-                CellTypeUtil cellTypeUtil;
-                if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-                    // TODO: Consider calling
-                    //    ActivityCompat#requestPermissions
-                    // here to request the missing permissions, and then overriding
-                    //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
-                    //                                          int[] grantResults)
-                    // to handle the case where the user grants the permission. See the documentation
-                    // for ActivityCompat#requestPermissions for more details.
-                    Log.e("getGsmSignalInfo:", "No permissions.");
-                    return null;
-                }
-                for (CellInfo cellInfo : telephonyManager.getAllCellInfo()) {
-                    HashMap<String, Object> paramsMap = extractParamsFromCellinfoString(cellInfo.toString());
-                    paramsMap.put("addr", address);
-                    paramsMap.put("loc", new double[]{oldLocation.getLatitude(), oldLocation.getLongitude()});
-                    paramsMap.put("time", getEpochTime(System.currentTimeMillis()));
-                    //TODO: paramsMap.put("type", cellTypeUtil()
-                    String identifier = paramsMap.get("MCC") + "_" +
-                            paramsMap.get("MNC") + "_" +
-                            paramsMap.get("PCI") + "_" +
-                            paramsMap.get("EARFCN");
-                    if (currentResults.containsKey(identifier)) {
-                        identifier += "_WEIRD_DUP";
-                    }
-                    currentResults.put(identifier, paramsMap);
-                    globalGsmMap.put(identifier, paramsMap);
-                }
-            } catch (Exception e) {
-                Log.e("getGsmSignalInfo", "Error retrieving GSM signal info: " + e.toString());
-                // Provide fallback values in case of failure
-                gsmData[0] = -1; // Invalid CID
-                gsmData[1] = -1; // Invalid LAC
-                gsmData[2] = -1; // Invalid Signal Strength
-            }
-        }
+//        TelephonyManager telephonyManager = (TelephonyManager) getSystemService(Context.TELEPHONY_SERVICE);
+//        HashMap<String, HashMap<String, Object>> currentResults = new HashMap<>();
+//        if (telephonyManager != null) {
+//            try {
+//                CellTypeUtil cellTypeUtil;
+//                if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+//                    // TODO: Consider calling
+//                    //    ActivityCompat#requestPermissions
+//                    // here to request the missing permissions, and then overriding
+//                    //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+//                    //                                          int[] grantResults)
+//                    // to handle the case where the user grants the permission. See the documentation
+//                    // for ActivityCompat#requestPermissions for more details.
+//                    Log.e("getGsmSignalInfo:", "No permissions.");
+//                    return null;
+//                }
+//                for (CellInfo cellInfo : telephonyManager.getAllCellInfo()) {
+//                    HashMap<String, Object> paramsMap = extractParamsFromCellinfoString(cellInfo.toString());
+//                    paramsMap.put("addr", address);
+//                    paramsMap.put("loc", new double[]{oldLocation.getLatitude(), oldLocation.getLongitude()});
+//                    paramsMap.put("time", getEpochTime(System.currentTimeMillis()));
+//                    //TODO: paramsMap.put("type", cellTypeUtil()
+//                    String identifier = paramsMap.get("MCC") + "_" +
+//                            paramsMap.get("MNC") + "_" +
+//                            paramsMap.get("PCI") + "_" +
+//                            paramsMap.get("EARFCN");
+//                    if (currentResults.containsKey(identifier)) {
+//                        identifier += "_WEIRD_DUP";
+//                    }
+//                    currentResults.put(identifier, paramsMap);
+//                    globalGsmMap.put(identifier, paramsMap);
+//                }
+//            } catch (Exception e) {
+//                Log.e("getGsmSignalInfo", "Error retrieving GSM signal info: " + e.toString());
+//                // Provide fallback values in case of failure
+//                gsmData[0] = -1; // Invalid CID
+//                gsmData[1] = -1; // Invalid LAC
+//                gsmData[2] = -1; // Invalid Signal Strength
+//            }
+//        }
         return gsmData;
     }
 
@@ -311,10 +311,10 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                             String humanReadableTime = getHumanReadableTime(currentTimeMillis);
                             long timeDiffMillis = currentTimeMillis - startTime;
                             String timeStamp = timeDiffMillis / 3600000 + "h "
-                                    + (timeDiffMillis % 60000) + "m "
-                                    + (timeDiffMillis % 1000) + "s @ " + humanReadableTime;
+                                    + (timeDiffMillis / 60000 % 60000) + "m "
+                                    + (timeDiffMillis / 1000 % 1000) + "s @ " + humanReadableTime;
                             textView.setText(timeStamp);
-                            String locData = "\nLat: " + latitude + "\nLon: " + longitude + "," + location.getTime();
+                            String locData = "\nLat: " + latitude + "\nLon: " + longitude + "," + location.getTime() + " map: " + globalWifiMap.size();
                             textView.append(locData);
                             TextView scrollView = findViewById(R.id.terminalScrollView);
 
@@ -338,13 +338,13 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                                 scrollView.setText(moveData);
                                 textView.scrollBy(0, 256);
 
-                                gsmData = getGsmSignalInfo();
-                                final String gsmDataForHuman = "\nCID:" + gsmData[0]
-                                        + "\nLAC: " + gsmData[1]
-                                        + "\nMCC: " + gsmData[2]
-                                        + "\nSTRENGTH: " + gsmData[3];
-                                TextView gsmView = findViewById(R.id.gsmView);
-                                gsmView.setText(gsmDataForHuman);
+//                                gsmData = getGsmSignalInfo();
+//                                final String gsmDataForHuman = "\nCID:" + gsmData[0]
+//                                        + "\nLAC: " + gsmData[1]
+//                                        + "\nMCC: " + gsmData[2]
+//                                        + "\nSTRENGTH: " + gsmData[3];
+//                                TextView gsmView = findViewById(R.id.gsmView);
+//                                gsmView.setText(gsmDataForHuman);
                             }
 
                             try {
