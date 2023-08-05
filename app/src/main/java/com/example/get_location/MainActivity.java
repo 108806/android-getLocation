@@ -124,6 +124,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         }
     }
 
+    //branch test
     @Override
     public void onSensorChanged(SensorEvent event) {
         Log.d("onSensorChanged: ", event.toString());
