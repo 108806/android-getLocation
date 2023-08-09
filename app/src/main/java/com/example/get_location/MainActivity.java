@@ -3,6 +3,7 @@ package com.example.get_location;
 import android.Manifest;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.graphics.Color;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
@@ -46,8 +47,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.TimeZone;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Stream;
 
 import android.telephony.CellIdentityGsm;
 import android.telephony.CellIdentityWcdma;
@@ -80,6 +83,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     private String moveDirection, address;
 
     private int[] gsmData;
+    private Stream s;
 
     public static String[] permissions = {
             Manifest.permission.ACCESS_FINE_LOCATION,
@@ -313,7 +317,8 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                             long timeDiffMillis = currentTimeMillis - startTime;
                             String timeStamp = timeDiffMillis / 3600000 + "h "
                                     + (timeDiffMillis / 60000 % 60000) + "m "
-                                    + (timeDiffMillis / 1000 % 1000) + "s @ " + humanReadableTime;
+                                    + (timeDiffMillis / 1000 % 1000) + "s @ " + humanReadableTime
+                                    + " SRs: " + scanResults.size();
                             textView.setText(timeStamp);
                             String locData = "\nLat: " + latitude + "\nLon: " + longitude + "," + location.getTime() + " map: " + globalWifiMap.size();
                             textView.append(locData);
@@ -379,16 +384,24 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                                 Log.e("JsonReader:", "Error reading the " + gsmDataFile);
                             }
 
-
-
                             for (ScanResult sr : scanResults) {
                                 try {
                                     String uniqueName = getUniqueName(sr.SSID, sr.BSSID);
+                                    boolean DANGER = false;
                                     if (isBetter(globalWifiMap, uniqueName, sr.level)) {
                                         // Save the JSON object to a file
 
                                         HashMap<String, Object> jsonWLAN = new HashMap<String, Object>();
                                         try {
+                                            if (isSSIDCloned(sr, scanResults) || isBSSIDCloned(sr, scanResults)){
+                                                uniqueName.concat("_DUPLICATE_");
+                                                DANGER = true;
+                                            }
+                                            if (sr.level < 30){
+                                                uniqueName.concat("_SS");
+                                                DANGER = true;
+                                            }
+
                                             jsonWLAN.put("SSID", sr.SSID);
                                             jsonWLAN.put("BSSID", sr.BSSID);
                                             jsonWLAN.put("frequency", sr.frequency);
@@ -398,8 +411,12 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                                             jsonWLAN.put("dist", calculateWLANDistance(sr.level, sr.frequency));
                                             jsonWLAN.put("sec", sr.capabilities);
                                             jsonWLAN.put("addr", address);
+                                            jsonWLAN.put("passpoint", sr.isPasspointNetwork());
+                                            jsonWLAN.put("80211mcResponder", sr.is80211mcResponder());
                                             jsonWLAN.put("time", getEpochTime(System.currentTimeMillis()));
+                                            jsonWLAN.put("danger", DANGER);
                                             globalWifiMap.put(uniqueName, jsonWLAN);
+                                            if (DANGER) scrollView.setBackgroundColor(Color.parseColor("FF0000"));
                                             scrollView.append("\ndataMap:" + globalWifiMap.size() + " vs " + scanResults.size() + "\nOK:" +
                                                     sr.SSID + " @ " + sr.BSSID + "-> " + sr.level);
                                         } catch (Exception e) {
@@ -418,7 +435,8 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                                         }
                                     } else {
                                         Log.d("isBetter:", "We got better than:" + sr.toString());
-                                        scrollView.append("SRs: " + scanResults.size() + " Neg: " +
+                                        if (DANGER) scrollView.setBackgroundColor(Color.parseColor("FF0000"));
+                                        scrollView.append(" Neg: " +
                                                 sr.SSID + " @ " + sr.BSSID + "-> " + sr.level + "\n");
                                     }
                                 } catch (Exception e) {
@@ -434,6 +452,30 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             }
         };
     }
+
+    private boolean isSSIDCloned(ScanResult sr, List<ScanResult> scanResults) {
+        final String ssid = sr.SSID;
+        int idx = 0;
+        for (ScanResult scanResult : scanResults){
+            if (Objects.equals(scanResult.SSID, ssid)) {
+                idx++;
+                if (1 < idx) return true;
+            }
+        }
+        return false;
+    }
+    private boolean isBSSIDCloned(ScanResult sr, List<ScanResult> scanResults){
+        final String bssid = sr.BSSID;
+        int idx = 0;
+        for (ScanResult scanResult : scanResults){
+            if (Objects.equals(scanResult.BSSID, bssid)) {
+                idx++;
+            }
+            if(idx > 1) return true;
+        }
+        return false;
+    }
+
 
     private String getStreetName(double latitude, double longitude) {
         Geocoder geocoder = new Geocoder(this, Locale.getDefault());
