@@ -156,7 +156,42 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             }catch (IOException e) {
                 throw new RuntimeException(e);
             }
+        }else{
+            createBackup(gsmDataFile);
         }
+
+        Gson gson = new Gson();
+        try {
+            String jsonContentWLAN = new String(Files.readAllBytes(wlanDataFile.toPath()));
+            if (!jsonContentWLAN.isEmpty()) {
+                Type hashMapType = new TypeToken<HashMap<String, HashMap<String, Object>>>() {
+                }.getType();
+                globalWifiMap = gson.fromJson(jsonContentWLAN, hashMapType);
+                Log.d("Wlan Data found:", globalWifiMap.size() + " : " + wlanDataFile.toString());
+
+            } else {
+                Log.e("JsonReader:", "Empty JSON content in " + wlanDataFile);
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+            Log.e("JsonReader:", "Error reading the " + wlanDataFile);
+        }
+        try {
+            String jsonContentGSM = new String(Files.readAllBytes(gsmDataFile.toPath()));
+            if (!jsonContentGSM.isEmpty()) {
+                Type hashMapType = new TypeToken<HashMap<String, HashMap<String, Object>>>() {
+                }.getType();
+                globalGsmMap = gson.fromJson(jsonContentGSM, hashMapType);
+                Log.d("GSM Data found:", globalGsmMap.size() + " : " + gsmDataFile.toString());
+
+            } else {
+                Log.e("JsonReader:", "Empty JSON content in " + gsmDataFile);
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+            Log.e("JsonReader:", "Error reading the " + gsmDataFile);
+        }
+
     }
 
     //branch test
@@ -373,36 +408,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 //                                gsmView.setText(gsmDataForHuman);
                             }
 
-                            try {
-                                String jsonContentWLAN = new String(Files.readAllBytes(wlanDataFile.toPath()));
-                                if (!jsonContentWLAN.isEmpty()) {
-                                    Type hashMapType = new TypeToken<HashMap<String, HashMap<String, Object>>>() {
-                                    }.getType();
-                                    globalWifiMap = gson.fromJson(jsonContentWLAN, hashMapType);
-                                    Log.d("Wlan Data found:", globalWifiMap.size() + " : " + wlanDataFile.toString());
 
-                                } else {
-                                    Log.e("JsonReader:", "Empty JSON content in " + wlanDataFile);
-                                }
-                            } catch (IOException e) {
-                                e.printStackTrace();
-                                Log.e("JsonReader:", "Error reading the " + wlanDataFile);
-                            }
-                            try {
-                                String jsonContentGSM = new String(Files.readAllBytes(gsmDataFile.toPath()));
-                                if (!jsonContentGSM.isEmpty()) {
-                                    Type hashMapType = new TypeToken<HashMap<String, HashMap<String, Object>>>() {
-                                    }.getType();
-                                    globalGsmMap = gson.fromJson(jsonContentGSM, hashMapType);
-                                    Log.d("GSM Data found:", globalGsmMap.size() + " : " + gsmDataFile.toString());
-
-                                } else {
-                                    Log.e("JsonReader:", "Empty JSON content in " + gsmDataFile);
-                                }
-                            } catch (IOException e) {
-                                e.printStackTrace();
-                                Log.e("JsonReader:", "Error reading the " + gsmDataFile);
-                            }
                             boolean DANGER_status = false;
                             int DANGER_reason = 0;
 
