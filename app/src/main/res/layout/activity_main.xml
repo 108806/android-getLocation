@@ -60,4 +60,15 @@
         android:background="#000000"
         android:textColor="#FFFFFF"
         android:text="@string/COMPASS_TEST" />
+
+    <TextView
+        android:id="@+id/statusTextView"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/scrollViewLayout"
+        android:background="#000000"
+        android:padding="8dp"
+        android:textColor="#FFFFFF"
+        android:textSize="18sp"
+        tools:text="Status text will appear here" />
 </RelativeLayout>

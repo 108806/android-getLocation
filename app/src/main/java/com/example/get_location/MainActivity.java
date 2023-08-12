@@ -35,6 +35,7 @@ import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOError;
@@ -42,6 +43,7 @@ import java.io.IOException;
 import java.lang.reflect.Type;
 import java.nio.file.Files;
 import java.text.SimpleDateFormat;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -50,6 +52,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.TimeZone;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import android.telephony.CellIdentityGsm;
@@ -101,6 +104,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
     Map<String, HashMap<String, Object>> globalWifiMap = new ConcurrentHashMap<>();
     Map <String, HashMap<String, Object>> globalGsmMap = new ConcurrentHashMap<>();
+    public static File wlanDataFile, gsmDataFile;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -125,6 +129,33 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             startWifiScan();
         } else {
             requestLocationPermission();
+        }
+
+        String CWD = Environment.getExternalStorageDirectory().getPath();
+        CWD = emulateMyC0KK(CWD);
+        wlanDataFile = new File(CWD + "/" + "wlan_data.json");
+        if (!wlanDataFile.exists()) {
+            try {
+                FileOutputStream fos = new FileOutputStream(wlanDataFile); /// not working too
+                fos.close();
+                Log.d("Create new file:", "File created:" + wlanDataFile.getAbsolutePath());
+            } catch (IOException e) {
+                Log.e("Create new file:", "Cannot create the file: " + wlanDataFile.getAbsolutePath());
+                throw new RuntimeException(e); // Cannot create the file: /storage/sdcard0/wlan_data.json
+            }
+        }else{
+            createBackup(wlanDataFile);
+        }
+
+        gsmDataFile = new File(CWD + "/" + "gsm_data.json");
+        if (!gsmDataFile.exists()){
+            try {
+                FileOutputStream fos = new FileOutputStream(gsmDataFile);
+                fos.close();
+                Log.d("Create new file:", "File created:" + gsmDataFile.getAbsolutePath());
+            }catch (IOException e) {
+                throw new RuntimeException(e);
+            }
         }
     }
 
@@ -279,35 +310,23 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                     double longitude = location.getLongitude();
 
 
-                    String CWD = Environment.getExternalStorageDirectory().getPath();
-                    CWD = emulateMyC0KK(CWD);
-                    File wlanDataFile = new File(CWD + "/" + "wlan_data.json");
-                    if (!wlanDataFile.exists()) {
-                        try {
-                            FileOutputStream fos = new FileOutputStream(wlanDataFile); /// not working too
-                            fos.close();
-                            Log.d("Create new file:", "File created:" + wlanDataFile.getAbsolutePath());
-                        } catch (IOException e) {
-                            Log.e("Create new file:", "Cannot create the file: " + wlanDataFile.getAbsolutePath());
-                            throw new RuntimeException(e); // Cannot create the file: /storage/sdcard0/wlan_data.json
-                        }
-                    }
-
-                    File gsmDataFile = new File(CWD + "/" + "gsm_data.json");
-                    if (!gsmDataFile.exists()){
-                        try {
-                            FileOutputStream fos = new FileOutputStream(gsmDataFile);
-                            fos.close();
-                            Log.d("Create new file:", "File created:" + gsmDataFile.getAbsolutePath());
-                        }catch (IOException e) {
-                            throw new RuntimeException(e);
-                        }
-                    }
-
                     runOnUiThread(new Runnable() {
                         @Override
                         public void run() {
                             Gson gson = new Gson();
+
+                            boolean[] scans = new boolean[128];
+                            int scanIdx = 0;
+                            boolean anyDanger = IntStream.range(0, scans.length)
+                                    .anyMatch(i -> scans[i]);
+                            TextView statusView = findViewById(R.id.statusTextView);
+                            if (!anyDanger){
+                                statusView.setBackgroundColor(Color.parseColor("#40EE60"));
+                                statusView.setText(danger_code[0]);
+                            }else{
+                                statusView.setBackgroundColor(Color.parseColor("#EE4060"));
+                                statusView.setText("DANGER DETECTED:");
+                            }
 
                             TextView textView = findViewById(R.id.terminalTextView);
                             long currentTimeMillis = System.currentTimeMillis();
@@ -340,9 +359,10 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                                         + String.format(Locale.GERMANY, " TIME: %03d", timeDiff)
                                         + String.format(Locale.GERMANY, " DIST: %.3f m ", dist)
                                         + "mDir:" + moveDirection
-                                        + String.format(Locale.GERMANY, " GLOB DIST: %.3f m \n", globalDist);
-                                scrollView.setText(moveData);
+                                        + String.format(Locale.GERMANY, " GLOB DIST: %.3f m", globalDist);
+                                textView.append(moveData);
                                 textView.scrollBy(0, 256);
+                                scrollView.setText("SRs:"+scanResults.size() + "\n");
 
 //                                gsmData = getGsmSignalInfo();
 //                                final String gsmDataForHuman = "\nCID:" + gsmData[0]
@@ -383,6 +403,8 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                                 e.printStackTrace();
                                 Log.e("JsonReader:", "Error reading the " + gsmDataFile);
                             }
+                            boolean DANGER_status = false;
+                            int DANGER_reason = 0;
 
                             for (ScanResult sr : scanResults) {
                                 try {
@@ -393,14 +415,23 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
                                         HashMap<String, Object> jsonWLAN = new HashMap<String, Object>();
                                         try {
-                                            if (isSSIDCloned(sr, scanResults) || isBSSIDCloned(sr, scanResults)){
-                                                uniqueName.concat("_DUPLICATE_");
-                                                DANGER = true;
+                                            if (isSSIDCloned(sr, scanResults)){
+                                                uniqueName.concat("_DUPLICATE_SSID");
+                                                DANGER_status = true;
+                                                DANGER_reason = 1;
+                                            }
+                                            if (isBSSIDCloned(sr, scanResults)){
+                                                uniqueName.concat("_DUPLICATE_BSSID");
+                                                DANGER_status = true;
+                                                DANGER_reason = 2;
                                             }
                                             if (sr.level < 30){
-                                                uniqueName.concat("_SS");
-                                                DANGER = true;
+                                                uniqueName.concat("_SUPER_SIGNAL");
+                                                DANGER_status = true;
+                                                DANGER_reason = 3;
                                             }
+                                            scans[scanIdx] = DANGER_status;
+                                            scanIdx++;
 
                                             jsonWLAN.put("SSID", sr.SSID);
                                             jsonWLAN.put("BSSID", sr.BSSID);
@@ -433,11 +464,15 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                                             Log.e(TAG, "Cannot write to JSON.");
                                             e.printStackTrace();
                                         }
+
+                                        if (DANGER_status){
+                                            statusView.append(danger_code[DANGER_reason] + sr.SSID);
+                                        }
+
                                     } else {
                                         Log.d("isBetter:", "We got better than:" + sr.toString());
-                                        if (DANGER) scrollView.setBackgroundColor(Color.parseColor("FF0000"));
-                                        scrollView.append(" Neg: " +
-                                                sr.SSID + " @ " + sr.BSSID + "-> " + sr.level + "\n");
+                                        if (DANGER_status) scrollView.setBackgroundColor(Color.parseColor("FF0000"));
+                                        scrollView.append(sr.SSID + " @ " + sr.BSSID + "-> " + sr.level + "\n");
                                     }
                                 } catch (Exception e) {
                                     Log.e("WRITER:", "ERROR.");
@@ -452,6 +487,40 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             }
         };
     }
+
+    private void createBackup(File wlanDataFile) {
+        File outputDir = new File(Environment.getExternalStorageDirectory(), "BKP");
+
+        // Check if the output directory exists; if not, create it.
+        if (!outputDir.exists()) {
+            if (!outputDir.mkdirs()) {
+                Log.e("Backup", "Failed to create backup directory");
+                return;
+            }
+        }
+
+        File outputFile = new File(outputDir, wlanDataFile.getName()+System.currentTimeMillis()/1000);
+
+        try (FileInputStream fis = new FileInputStream(wlanDataFile);
+             FileOutputStream fos = new FileOutputStream(outputFile)) {
+
+            byte[] buffer = new byte[1024];
+            int length;
+            while ((length = fis.read(buffer)) > 0) {
+                fos.write(buffer, 0, length);
+            }
+
+            Log.d("Backup", "File backed up successfully:" + wlanDataFile);
+
+        } catch (IOException e) {
+            Log.e("Backup", "Error backing up file", e);
+        }
+    }
+
+    public static final String[] danger_code = {
+            "No danger found.", "SSID is cloned!",
+            "BSSID is cloned!","Signal is SUPER STRONG!"
+    };
 
     private boolean isSSIDCloned(ScanResult sr, List<ScanResult> scanResults) {
         final String ssid = sr.SSID;
