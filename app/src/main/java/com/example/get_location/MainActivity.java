@@ -15,8 +15,6 @@ import android.net.wifi.ScanResult;
 import android.net.wifi.WifiManager;
 import android.os.Bundle;
 import android.os.Environment;
-import android.telephony.CellInfo;
-import android.telephony.TelephonyManager;
 import android.util.Log;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -43,7 +41,6 @@ import java.io.IOException;
 import java.lang.reflect.Type;
 import java.nio.file.Files;
 import java.text.SimpleDateFormat;
-import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -54,15 +51,6 @@ import java.util.TimeZone;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
-
-import android.telephony.CellIdentityGsm;
-import android.telephony.CellIdentityWcdma;
-import android.telephony.CellInfo;
-import android.telephony.CellInfoGsm;
-import android.telephony.CellInfoLte;
-import android.telephony.CellInfoCdma;
-import android.telephony.CellInfoTdscdma;
-import android.telephony.TelephonyManager;
 
 public class MainActivity extends AppCompatActivity implements SensorEventListener {
 
@@ -78,7 +66,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     List<ScanResult> scanResults;
 
     private SensorManager sensorManager;
-    private Sensor magnetometer;
+    private Sensor magnetometer, accelerometer;
     private final float[] lastMagnetometerValues = new float[3];
     private final float[] lastAccelerometerValues = new float[3];
     private boolean hasLastMagnetometerValues = false;
@@ -87,7 +75,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
     private int[] gsmData;
     private Stream s;
-
+    private final long launchTime = System.currentTimeMillis();
     public static String[] permissions = {
             Manifest.permission.ACCESS_FINE_LOCATION,
             Manifest.permission.ACCESS_COARSE_LOCATION,
@@ -120,11 +108,13 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         // Initialize SensorManager and sensors
         sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
         magnetometer = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD);
-        Sensor accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+        accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+
         Log.d("magnetometer VENDOR:", magnetometer.getVendor());
         // Register sensor listeners
-        sensorManager.registerListener((SensorEventListener) this, magnetometer, SensorManager.SENSOR_DELAY_GAME);
-        sensorManager.registerListener((SensorEventListener) this, accelerometer, SensorManager.SENSOR_DELAY_GAME);
+        sensorManager.registerListener((SensorEventListener) this, magnetometer, SensorManager.SENSOR_DELAY_NORMAL);
+        sensorManager.registerListener((SensorEventListener) this, accelerometer, SensorManager.SENSOR_DELAY_NORMAL);
+
         if (checkPermissions()) {
             startWifiScan();
         } else {
@@ -144,7 +134,9 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                 throw new RuntimeException(e); // Cannot create the file: /storage/sdcard0/wlan_data.json
             }
         }else{
-            createBackup(wlanDataFile);
+            boolean backupSuccess = createBackup(wlanDataFile);
+            Log.v("Backup Success: ", Boolean.toString(backupSuccess));
+            if (!backupSuccess) Log.e("BKP ERROR:", "NO BACKUP CREATED!");
         }
 
         gsmDataFile = new File(CWD + "/" + "gsm_data.json");
@@ -420,21 +412,28 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                                         // Save the JSON object to a file
 
                                         HashMap<String, Object> jsonWLAN = new HashMap<String, Object>();
+                                        //Todo: test all the cases.
                                         try {
                                             if (isSSIDCloned(sr, scanResults)){
                                                 uniqueName.concat("_DUPLICATE_SSID");
                                                 DANGER_status = true;
-                                                DANGER_reason = 1;
+                                                DANGER_reason = 1; //Todo: make reasons array with selections too
+                                                final int idx = getIndexOfScanResultBySSID(scanResults, sr.SSID);
+                                                scans[idx] = true;
                                             }
                                             if (isBSSIDCloned(sr, scanResults)){
                                                 uniqueName.concat("_DUPLICATE_BSSID");
                                                 DANGER_status = true;
                                                 DANGER_reason = 2;
+                                                final int idx = getIndexOfScanResultBySSID(scanResults, sr.SSID);
+                                                scans[idx] = true;
                                             }
-                                            if (sr.level < 30){
+                                            if (sr.level > 30){
                                                 uniqueName.concat("_SUPER_SIGNAL");
                                                 DANGER_status = true;
                                                 DANGER_reason = 3;
+                                                final int idx = getIndexOfScanResultBySSID(scanResults, sr.SSID);
+                                                scans[idx] = true;
                                             }
                                             scans[scanIdx] = DANGER_status;
                                             scanIdx++;
@@ -453,7 +452,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                                             jsonWLAN.put("time", getEpochTime(System.currentTimeMillis()));
                                             jsonWLAN.put("danger", DANGER);
                                             globalWifiMap.put(uniqueName, jsonWLAN);
-                                            if (DANGER) scrollView.setBackgroundColor(Color.parseColor("FF0000"));
+                                            if (DANGER) scrollView.setBackgroundColor(Color.parseColor("#DD1122"));
                                             scrollView.append("\ndataMap:" + globalWifiMap.size() + " vs " + scanResults.size() + "\nOK:" +
                                                     sr.SSID + " @ " + sr.BSSID + "-> " + sr.level);
                                         } catch (Exception e) {
@@ -477,7 +476,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
                                     } else {
                                         Log.d("isBetter:", "We got better than:" + sr.toString());
-                                        if (DANGER_status) scrollView.setBackgroundColor(Color.parseColor("FF0000"));
+                                        if (DANGER_status) scrollView.setBackgroundColor(Color.parseColor("#DD1122"));
                                         scrollView.append(sr.SSID + " @ " + sr.BSSID + "-> " + sr.level + "\n");
                                     }
                                 } catch (Exception e) {
@@ -494,18 +493,30 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         };
     }
 
-    private void createBackup(File wlanDataFile) {
+    public int getIndexOfScanResultBySSID(List<ScanResult> scanResults, String targetSSID) {
+        for (int i = 0; i < scanResults.size(); i++) {
+            if (scanResults.get(i).SSID.equals(targetSSID)) {
+                return i;
+            }
+        }
+        return -1; // If not found
+    }
+
+    private boolean createBackup(File wlanDataFile) {
         File outputDir = new File(Environment.getExternalStorageDirectory(), "BKP");
 
         // Check if the output directory exists; if not, create it.
         if (!outputDir.exists()) {
             if (!outputDir.mkdirs()) {
                 Log.e("Backup", "Failed to create backup directory");
-                return;
+                return false;
             }
         }
-
-        File outputFile = new File(outputDir, wlanDataFile.getName()+System.currentTimeMillis()/1000);
+        File outputFile = new File(outputDir, String.valueOf(launchTime/1000)+"_"+wlanDataFile.getName());
+        if (outputFile.exists()) {
+            Log.e("BKP", "Backup already exists" + outputFile.getAbsolutePath());
+            return false;
+        }
 
         try (FileInputStream fis = new FileInputStream(wlanDataFile);
              FileOutputStream fos = new FileOutputStream(outputFile)) {
@@ -521,6 +532,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         } catch (IOException e) {
             Log.e("Backup", "Error backing up file", e);
         }
+        return true;
     }
 
     public static final String[] danger_code = {
