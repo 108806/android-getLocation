@@ -429,7 +429,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                                                 scans[idx] = true;
                                             }
                                             if (sr.level > 30){
-                                                uniqueName.concat("_SUPER_SIGNAL");
+                                                uniqueName.concat("_SUPER_SS");
                                                 DANGER_status = true;
                                                 DANGER_reason = 3;
                                                 final int idx = getIndexOfScanResultBySSID(scanResults, sr.SSID);
