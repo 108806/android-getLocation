@@ -16,6 +16,7 @@ import android.net.wifi.ScanResult;
 import android.net.wifi.WifiManager;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.Handler;
 import android.telephony.CellInfo;
 import android.telephony.TelephonyManager;
 import android.util.Log;
@@ -104,7 +105,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     };
 
     Map<String, HashMap<String, Object>> globalWifiMap = new ConcurrentHashMap<>();
-    Map <String, HashMap<String, Object>> globalGsmMap = new ConcurrentHashMap<>();
+    Map<String, HashMap<String, Object>> globalGsmMap = new ConcurrentHashMap<>();
     public static File wlanDataFile, gsmDataFile;
 
     @Override
@@ -112,7 +113,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        TextView terminalTextView = findViewById(R.id.terminalTextView);
+        TextView terminalTextView = findViewById(R.id.terminalTextView2);
         terminalTextView.setText("Waiting for the data...\n");
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
         createLocationRequest();
@@ -144,27 +145,38 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                 Log.e("Create new file:", "Cannot create the file: " + wlanDataFile.getAbsolutePath());
                 throw new RuntimeException(e); // Cannot create the file: /storage/sdcard0/wlan_data.json
             }
-        }else{
+        } else {
             createBackup(wlanDataFile);
         }
 
         gsmDataFile = new File(CWD + "/" + "gsm_data.json");
         new File(CWD + "/" + "TRUE_LOCATION");
-        if (!gsmDataFile.exists()){
+        if (!gsmDataFile.exists()) {
             try {
                 FileOutputStream fos = new FileOutputStream(gsmDataFile);
                 fos.close();
                 Log.d("Create new file:", "File created:" + gsmDataFile.getAbsolutePath());
-            }catch (IOException e) {
+            } catch (IOException e) {
                 throw new RuntimeException(e);
             }
         }
     }
 
-    //branch test
+    private Handler handler = new Handler();
+
+    // Declare a boolean flag to track if the sensor update is pending
+    private boolean isSensorUpdatePending = false;
+    private float sigPwr = 0;
+
     @Override
     public void onSensorChanged(SensorEvent event) {
         Log.d("onSensorChanged: ", event.toString());
+
+        // Check if a sensor update is pending
+        if (isSensorUpdatePending) {
+            return; // Return early if a sensor update is pending
+        }
+
         if (event.sensor == magnetometer) {
             System.arraycopy(event.values, 0, lastMagnetometerValues, 0, event.values.length);
             hasLastMagnetometerValues = true;
@@ -173,8 +185,27 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             hasLastAccelerometerValues = true;
         }
 
-        float sigPwr = event.sensor.getPower();
+        // Set a flag to indicate that a sensor update is pending
+        isSensorUpdatePending = true;
 
+        // Check the power signal
+        sigPwr = event.sensor.getPower();
+
+        // Post a delayed task to execute after 1 second
+        handler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                // Reset the flag after 1 second
+                isSensorUpdatePending = false;
+                // Continue with sensor data processing
+                processSensorData();
+            }
+        }, 1000); // 1000 milliseconds = 1 second
+    }
+
+    // Method to process sensor data
+    private void processSensorData() {
+        // Check if both accelerometer and magnetometer data are available
         if (hasLastAccelerometerValues && hasLastMagnetometerValues) {
             float[] rotationMatrix = new float[9];
             if (SensorManager.getRotationMatrix(rotationMatrix, null, lastAccelerometerValues, lastMagnetometerValues)) {
@@ -188,6 +219,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                 }
 
                 // Update the compass direction
+
                 dirFromAz = getDirectionFromAzimuth(azimuth);
                 TextView compassTextView = findViewById(R.id.CompassTextView);
                 compassTextView.setText(azimuth + "°" + dirFromAz + " @\n" + address + " @ " + sigPwr);
@@ -324,29 +356,34 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                             boolean anyDanger = IntStream.range(0, scans.length)
                                     .anyMatch(i -> scans[i]);
                             TextView statusView = findViewById(R.id.statusTextView);
-                            if (!anyDanger){
+                            if (!anyDanger) {
                                 statusView.setBackgroundColor(Color.parseColor("#40EE60"));
+                                statusView.setTextColor(Color.parseColor("#000000"));
                                 statusView.setText(danger_code[0]);
-                            }else{
+                            } else {
                                 statusView.setBackgroundColor(Color.parseColor("#EE4060"));
+                                statusView.setTextColor(Color.parseColor("#000000"));
                                 statusView.setText("DANGER DETECTED:");
                             }
                             ////////////////////////////////////////////////////////////
 
                             /////////////////////////////////////////// UI FOR THE HUMAN
-                            TextView textView = findViewById(R.id.terminalTextView);
+                            TextView textView1 = findViewById(R.id.terminalTextView1);
+                            String locData = "\nLat: " + latitude + " Lon: " + longitude + "\n" + location.getTime() + " MAP: " + globalWifiMap.size() + "\n";
+                            textView1.setTextColor(Color.parseColor("#40FF40"));
+                            textView1.setText(locData);
                             long currentTimeMillis = System.currentTimeMillis();
                             if (startTime == 0) startTime = currentTimeMillis;
-
                             String humanReadableTime = getHumanReadableTime(currentTimeMillis);
                             long timeDiffMillis = currentTimeMillis - startTime;
                             String timeStamp = timeDiffMillis / 3600000 + "h "
                                     + (timeDiffMillis / 60000 % 60000) + "m "
                                     + (timeDiffMillis / 1000 % 1000) + "s @ " + humanReadableTime
                                     + " SRs: " + scanResults.size();
-                            textView.setText(timeStamp);
-                            String locData = "\nLat: " + latitude + "\nLon: " + longitude + "," + location.getTime() + " map: " + globalWifiMap.size();
-                            textView.append(locData);
+                            textView1.append(timeStamp);
+
+                            TextView textView2 = findViewById(R.id.terminalTextView2);
+                            textView2.setTextColor(Color.parseColor("#FFFF20"));
                             TextView scrollView = findViewById(R.id.terminalScrollView);
 
                             // Calculate N/S/W/E direction
@@ -358,17 +395,20 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                             if (oldLocation != null) {
                                 long oldTime = oldLocation.getTime(), newTime = location.getTime();
                                 long timeDiff = newTime - oldTime;
+                                double dist = 0.0;
                                 double speedKmph = SpeedCalculator.calculateSpeed(oldLocation, location, timeDiff);
-                                double dist = SpeedCalculator.calculateMoveDistance(oldLocation.getLatitude(), oldLocation.getLongitude(), latitude, longitude);
-                                globalDist += dist;
-                                String moveData = String.format(Locale.GERMANY, "\nSPEED: %.3f kmph", speedKmph)
-                                        + String.format(Locale.GERMANY, " TIME: %03d", timeDiff)
+                                if (speedKmph > 0.1) { // Avoid moving hundred miles over time while not moving at all
+                                    dist = SpeedCalculator.calculateMoveDistance(oldLocation.getLatitude(), oldLocation.getLongitude(), latitude, longitude);
+                                    globalDist += dist;
+                                }
+                                String moveData = String.format(Locale.GERMANY, "SPEED: %.3f kmph\n", speedKmph)
+                                        + "HEADING:" + moveDirection + "@" + String.format("%.3f", bearing)
+                                        + String.format(Locale.GERMANY, "\nTIME: %03d", timeDiff)
                                         + String.format(Locale.GERMANY, " DIST: %.3f m ", dist)
-                                        + "mDir:" + moveDirection
                                         + String.format(Locale.GERMANY, " GLOB DIST: %.3f m", globalDist);
-                                textView.append(moveData);
-                                textView.scrollBy(0, 256);
-                                scrollView.setText("SRs:"+scanResults.size() + "\n");
+                                textView2.setText(moveData);
+                                textView2.scrollBy(0, 256);
+                                scrollView.setText("SRs:" + scanResults.size() + "\n");
 
 //                                gsmData = getGsmSignalInfo();
 //                                final String gsmDataForHuman = "\nCID:" + gsmData[0]
@@ -421,17 +461,17 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
                                         HashMap<String, Object> jsonWLAN = new HashMap<String, Object>();
                                         try {
-                                            if (isSSIDCloned(sr, scanResults)){
+                                            if (isSSIDCloned(sr, scanResults)) {
                                                 uniqueName.concat("_DUPLICATE_SSID");
                                                 DANGER_status = true;
                                                 DANGER_reason = 1;
                                             }
-                                            if (isBSSIDCloned(sr, scanResults)){
+                                            if (isBSSIDCloned(sr, scanResults)) {
                                                 uniqueName.concat("_DUPLICATE_BSSID");
                                                 DANGER_status = true;
                                                 DANGER_reason = 2;
                                             }
-                                            if (sr.level < 30){
+                                            if (sr.level < 30) {
                                                 uniqueName.concat("_SUPER_SIGNAL");
                                                 DANGER_status = true;
                                                 DANGER_reason = 3;
@@ -453,7 +493,8 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                                             jsonWLAN.put("time", getEpochTime(System.currentTimeMillis()));
                                             jsonWLAN.put("danger", DANGER);
                                             globalWifiMap.put(uniqueName, jsonWLAN);
-                                            if (DANGER) scrollView.setBackgroundColor(Color.parseColor("FF0000"));
+                                            if (DANGER)
+                                                scrollView.setBackgroundColor(Color.parseColor("FF0000"));
                                             scrollView.append("\ndataMap:" + globalWifiMap.size() + " vs " + scanResults.size() + "\nOK:" +
                                                     sr.SSID + " @ " + sr.BSSID + "-> " + sr.level);
                                         } catch (Exception e) {
@@ -471,13 +512,14 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                                             e.printStackTrace();
                                         }
 
-                                        if (DANGER_status){
+                                        if (DANGER_status) {
                                             statusView.append(danger_code[DANGER_reason] + sr.SSID);
                                         }
 
                                     } else {
                                         Log.d("isBetter:", "We got better than:" + sr.toString());
-                                        if (DANGER_status) scrollView.setBackgroundColor(Color.parseColor("FF0000"));
+                                        if (DANGER_status)
+                                            scrollView.setBackgroundColor(Color.parseColor("FF0000"));
                                         scrollView.append(sr.SSID + " @ " + sr.BSSID + "-> " + sr.level + "\n");
                                     }
                                 } catch (Exception e) {
@@ -505,7 +547,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             }
         }
 
-        File outputFile = new File(outputDir, wlanDataFile.getName()+System.currentTimeMillis()/1000);
+        File outputFile = new File(outputDir, wlanDataFile.getName() + System.currentTimeMillis() / 1000);
 
         try (FileInputStream fis = new FileInputStream(wlanDataFile);
              FileOutputStream fos = new FileOutputStream(outputFile)) {
@@ -525,13 +567,13 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
     public static final String[] danger_code = {
             "No danger found.", "SSID is cloned!",
-            "BSSID is cloned!","Signal is SUPER STRONG!"
+            "BSSID is cloned!", "Signal is SUPER STRONG!"
     };
 
     private boolean isSSIDCloned(ScanResult sr, List<ScanResult> scanResults) {
         final String ssid = sr.SSID;
         int idx = 0;
-        for (ScanResult scanResult : scanResults){
+        for (ScanResult scanResult : scanResults) {
             if (Objects.equals(scanResult.SSID, ssid)) {
                 idx++;
                 if (1 < idx) return true;
@@ -539,14 +581,15 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         }
         return false;
     }
-    private boolean isBSSIDCloned(ScanResult sr, List<ScanResult> scanResults){
+
+    private boolean isBSSIDCloned(ScanResult sr, List<ScanResult> scanResults) {
         final String bssid = sr.BSSID;
         int idx = 0;
-        for (ScanResult scanResult : scanResults){
+        for (ScanResult scanResult : scanResults) {
             if (Objects.equals(scanResult.BSSID, bssid)) {
                 idx++;
             }
-            if(idx > 1) return true;
+            if (idx > 1) return true;
         }
         return false;
     }
@@ -641,7 +684,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             // CQI (Channel Quality Indicator) - A measurement of the quality of the wireless channel.
             paramsMap.put("CQI", cqi);
 
-             // TA (Timing Advance) - The timing advance value for the cell in units of micro-seconds (μs).
+            // TA (Timing Advance) - The timing advance value for the cell in units of micro-seconds (μs).
             paramsMap.put("TA", ta);
 
 

@@ -5,20 +5,31 @@
     android:background="#000000">
 
     <TextView
-        android:id="@+id/terminalTextView"
+        android:id="@+id/terminalTextView1"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="#000000"
         android:padding="8dp"
         android:textColor="#FFFFFF"
         android:textSize="18sp"
-        tools:text="Terminal text will appear here" />
+        tools:text="Terminal text 1 will appear here" />
+
+    <TextView
+        android:id="@+id/terminalTextView2"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="#000000"
+        android:padding="8dp"
+        android:textColor="#FFFFFF"
+        android:textSize="18sp"
+        android:layout_below="@id/terminalTextView1"
+        tools:text="Terminal text 2 will appear here" />
 
     <LinearLayout
         android:id="@+id/scrollViewLayout"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_below="@id/terminalTextView"
+        android:layout_below="@id/terminalTextView2"
         android:layout_above="@id/CompassTextView"
         android:orientation="vertical">
 
