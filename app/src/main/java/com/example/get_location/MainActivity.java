@@ -1,6 +1,7 @@
 package com.example.get_location;
 
 import android.Manifest;
+import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
@@ -148,6 +149,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         }
 
         gsmDataFile = new File(CWD + "/" + "gsm_data.json");
+        new File(CWD + "/" + "TRUE_LOCATION");
         if (!gsmDataFile.exists()){
             try {
                 FileOutputStream fos = new FileOutputStream(gsmDataFile);
@@ -315,6 +317,8 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                         public void run() {
                             Gson gson = new Gson();
 
+                            ////////////////////////////////////////// DANGER INDICATOR:
+                            // If any previous scan showed any danger it will be displayed.
                             boolean[] scans = new boolean[128];
                             int scanIdx = 0;
                             boolean anyDanger = IntStream.range(0, scans.length)
@@ -327,7 +331,9 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                                 statusView.setBackgroundColor(Color.parseColor("#EE4060"));
                                 statusView.setText("DANGER DETECTED:");
                             }
+                            ////////////////////////////////////////////////////////////
 
+                            /////////////////////////////////////////// UI FOR THE HUMAN
                             TextView textView = findViewById(R.id.terminalTextView);
                             long currentTimeMillis = System.currentTimeMillis();
                             if (startTime == 0) startTime = currentTimeMillis;
@@ -803,6 +809,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     }
 
     private String getUniqueName(String ssid, String bssid) {
+        //TODO: REMOVE EVERY THIRD CHAR FROM getHex (3A == ":")
         return getHex(ssid) + "_" + getHex(bssid);
     }
 
@@ -893,14 +900,14 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         if (CWD.toLowerCase().contains("emulated")) {
             Log.d("Emulated in CWD", "Trying manual fix...");
             try {
-                String writeDir = "/sdcard";
+                @SuppressLint("SdCardPath") String writeDir = "/sdcard";
                 if (new File(writeDir).isDirectory())
                     CWD = writeDir;
             } catch (IOError e) {
                 Log.d("Manual fix:", "No such file : " + e);
             }
             try {
-                String writeDir = "/sdcard0";
+                @SuppressLint("SdCardPath") String writeDir = "/sdcard0";
                 if (new File(writeDir).isDirectory())
                     CWD = writeDir;
             } catch (IOError e) {
