@@ -200,7 +200,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                 // Continue with sensor data processing
                 processSensorData();
             }
-        }, 1000); // 1000 milliseconds = 1 second
+        }, 333); // 1000 milliseconds = 1 second
     }
 
     // Method to process sensor data
@@ -397,13 +397,13 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                                 long timeDiff = newTime - oldTime;
                                 double dist = 0.0;
                                 double speedKmph = SpeedCalculator.calculateSpeed(oldLocation, location, timeDiff);
-                                if (speedKmph > 0.1) { // Avoid moving hundred miles over time while not moving at all
+                                if (speedKmph > 0.025) { // Avoid moving hundred miles over time while not moving at all
                                     dist = SpeedCalculator.calculateMoveDistance(oldLocation.getLatitude(), oldLocation.getLongitude(), latitude, longitude);
                                     globalDist += dist;
                                 }
                                 String moveData = String.format(Locale.GERMANY, "SPEED: %.3f kmph\n", speedKmph)
                                         + "HEADING:" + moveDirection + "@" + String.format("%.3f", bearing)
-                                        + String.format(Locale.GERMANY, "\nTIME: %03d", timeDiff)
+                                        + String.format(Locale.GERMANY, "\nTDIFF: %03d", timeDiff)
                                         + String.format(Locale.GERMANY, " DIST: %.3f m ", dist)
                                         + String.format(Locale.GERMANY, " GLOB DIST: %.3f m", globalDist);
                                 textView2.setText(moveData);
@@ -494,7 +494,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                                             jsonWLAN.put("danger", DANGER);
                                             globalWifiMap.put(uniqueName, jsonWLAN);
                                             if (DANGER)
-                                                scrollView.setBackgroundColor(Color.parseColor("FF0000"));
+                                                scrollView.setBackgroundColor(Color.parseColor("#FF0000"));
                                             scrollView.append("\ndataMap:" + globalWifiMap.size() + " vs " + scanResults.size() + "\nOK:" +
                                                     sr.SSID + " @ " + sr.BSSID + "-> " + sr.level);
                                         } catch (Exception e) {
@@ -519,7 +519,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                                     } else {
                                         Log.d("isBetter:", "We got better than:" + sr.toString());
                                         if (DANGER_status)
-                                            scrollView.setBackgroundColor(Color.parseColor("FF0000"));
+                                            scrollView.setBackgroundColor(Color.parseColor("#FF0000"));
                                         scrollView.append(sr.SSID + " @ " + sr.BSSID + "-> " + sr.level + "\n");
                                     }
                                 } catch (Exception e) {
